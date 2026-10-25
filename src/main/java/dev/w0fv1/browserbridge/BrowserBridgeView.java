@@ -5,6 +5,7 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.router.BeforeEnterEvent;
 import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.Route;
@@ -16,17 +17,22 @@ public final class BrowserBridgeView extends VerticalLayout implements BeforeEnt
     private static final String DEFAULT_URL = "https://example.com/";
 
     private final BrowserSessionManager sessions;
+    private final Select<BrowserProfileId> profile = new Select<>("浏览器配置");
     private final BrowserStreamComponent stream = new BrowserStreamComponent();
     private final Div status = new Div();
     private String targetUrl = DEFAULT_URL;
     private BrowserSessionLease lease;
 
-    public BrowserBridgeView(BrowserSessionManager sessions) {
+    public BrowserBridgeView(BrowserSessionManager sessions, BrowserEnvironmentStore environments) {
         this.sessions = sessions;
+        profile.setItems(environments.profileIds());
+        profile.setItemLabelGenerator(BrowserProfileId::value);
+        profile.setValue(BrowserProfileId.DEFAULT);
         setSizeFull();
         setPadding(true);
         setSpacing(true);
         add(new H2("服务端浏览器桥接"),
+                profile,
                 new Button("启动浏览器", event -> start()),
                 status,
                 stream);
@@ -47,11 +53,17 @@ public final class BrowserBridgeView extends VerticalLayout implements BeforeEnt
             lease.close();
             lease = null;
         }
+        BrowserProfileId profileId = profile.getValue();
+        if (profileId == null) {
+            status.setText("请选择浏览器配置");
+            return;
+        }
         try {
-            lease = sessions.openDefault(targetUrl);
+            lease = sessions.open(profileId.value(), targetUrl);
             BrowserSession session = lease.session();
             stream.setSessionId(session.id());
-            status.setText("会话 " + session.id() + " 已就绪");
+            status.setText("会话 " + session.id() + " 已就绪，配置 " + profileId.value()
+                    + "，环境 " + session.browserInfo().environmentMode());
         } catch (RuntimeException failure) {
             status.setText("创建会话失败：" + failure.getMessage());
         }

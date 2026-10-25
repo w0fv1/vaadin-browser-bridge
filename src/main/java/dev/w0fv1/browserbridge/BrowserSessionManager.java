@@ -26,10 +26,13 @@ public final class BrowserSessionManager {
     private final Map<String, BrowserSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, SharedSession> sharedSessions = new ConcurrentHashMap<>();
 
-    public BrowserSessionManager(BrowserRuntime runtime, BrowserRuntimeProperties properties) {
+    public BrowserSessionManager(
+            BrowserRuntime runtime,
+            BrowserRuntimeProperties properties,
+            BrowserEnvironmentStore environments) {
         this.runtime = runtime;
         this.properties = properties;
-        this.profiles = new BrowserProfileRegistry(properties.profileRoot());
+        this.profiles = new BrowserProfileRegistry(properties.profileRoot(), environments);
         this.playwrightVersion = Optional.ofNullable(Playwright.class.getPackage().getImplementationVersion())
                 .orElse("unknown");
     }
@@ -62,7 +65,7 @@ public final class BrowserSessionManager {
         BrowserContext context = null;
         BrowserSession session = null;
         try {
-            context = runtime.launch(lease.directory());
+            context = runtime.launch(lease.directory(), lease.environment());
             String browserVersion = Optional.ofNullable(context.browser())
                     .map(browser -> browser.version())
                     .orElse("unknown");
