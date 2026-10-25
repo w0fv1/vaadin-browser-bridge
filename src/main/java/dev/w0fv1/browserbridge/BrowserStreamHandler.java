@@ -31,13 +31,13 @@ public final class BrowserStreamHandler extends AbstractWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession socket) {
-        BrowserSessionManager.BrowserSession browser = sessions.require(sessionId(socket));
+        BrowserSession browser = sessions.require(sessionId(socket));
         Thread.startVirtualThread(() -> stream(socket, browser));
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession socket, TextMessage message) {
-        BrowserSessionManager.BrowserSession browser = sessions.require(sessionId(socket));
+        BrowserSession browser = sessions.require(sessionId(socket));
         JsonNode input = mapper.readTree(message.getPayload());
         try {
             switch (input.path("type").asString()) {
@@ -56,14 +56,14 @@ public final class BrowserStreamHandler extends AbstractWebSocketHandler {
                 case "tab.close" -> browser.closeTab(input.path("tabId").asString(""));
                 case "tab.navigate" -> browser.navigateActive(input.path("url").asString("about:blank"));
                 case "viewport.resize" -> browser.resizeViewport(
-                        input.path("width").asInt(BrowserSessionManager.DEFAULT_VIEWPORT_WIDTH),
-                        input.path("height").asInt(BrowserSessionManager.DEFAULT_VIEWPORT_HEIGHT));
+                        input.path("width").asInt(BrowserSession.DEFAULT_VIEWPORT_WIDTH),
+                        input.path("height").asInt(BrowserSession.DEFAULT_VIEWPORT_HEIGHT));
                 case "stream.configure" -> browser.configure(
-                        input.path("quality").asInt(BrowserSessionManager.DEFAULT_QUALITY),
-                        input.path("intervalMillis").asInt(BrowserSessionManager.DEFAULT_INTERVAL_MILLIS),
-                        input.path("networkEnabled").asBoolean(BrowserSessionManager.DEFAULT_NETWORK_ENABLED),
-                        input.path("bandwidthBytesPerSecond").asInt(BrowserSessionManager.DEFAULT_BANDWIDTH_BYTES_PER_SECOND),
-                        input.path("latencyMillis").asInt(BrowserSessionManager.DEFAULT_LATENCY_MILLIS));
+                        input.path("quality").asInt(BrowserSession.DEFAULT_QUALITY),
+                        input.path("intervalMillis").asInt(BrowserSession.DEFAULT_INTERVAL_MILLIS),
+                        input.path("networkEnabled").asBoolean(BrowserSession.DEFAULT_NETWORK_ENABLED),
+                        input.path("bandwidthBytesPerSecond").asInt(BrowserSession.DEFAULT_BANDWIDTH_BYTES_PER_SECOND),
+                        input.path("latencyMillis").asInt(BrowserSession.DEFAULT_LATENCY_MILLIS));
                 default -> {
                 }
             }
@@ -71,14 +71,14 @@ public final class BrowserStreamHandler extends AbstractWebSocketHandler {
         }
     }
 
-    private void stream(WebSocketSession socket, BrowserSessionManager.BrowserSession browser) {
+    private void stream(WebSocketSession socket, BrowserSession browser) {
         long sentVersion = -1;
         long nextTelemetry = 0;
         StreamMetrics metrics = new StreamMetrics();
         TrafficShaper shaper = new TrafficShaper();
         try {
             while (socket.isOpen()) {
-                BrowserSessionManager.TabsState state = browser.state();
+                BrowserSession.TabsState state = browser.state();
                 if (state.version() != sentVersion) {
                     socket.sendMessage(new TextMessage(mapper.writeValueAsString(state)));
                     sentVersion = state.version();
@@ -113,7 +113,7 @@ public final class BrowserStreamHandler extends AbstractWebSocketHandler {
             WebSocketSession socket,
             byte[] frame,
             TrafficShaper shaper,
-            BrowserSessionManager.TabsState state,
+            BrowserSession.TabsState state,
             StreamMetrics metrics) throws Exception {
         int chunkCount = (frame.length + FRAME_CHUNK_BYTES - 1) / FRAME_CHUNK_BYTES;
         int frameId = metrics.nextFrameId();
@@ -140,10 +140,10 @@ public final class BrowserStreamHandler extends AbstractWebSocketHandler {
 
     private static TelemetryMessage telemetry(
             WebSocketSession socket,
-            BrowserSessionManager.BrowserSession browser,
+            BrowserSession browser,
             StreamMetrics metrics) {
-        BrowserSessionManager.BrowserInfo browserInfo = browser.browserInfo();
-        BrowserSessionManager.TabsState state = browser.state();
+        BrowserSession.BrowserInfo browserInfo = browser.browserInfo();
+        BrowserSession.TabsState state = browser.state();
         Runtime runtime = Runtime.getRuntime();
         OperatingSystemMXBean operatingSystem = ManagementFactory.getOperatingSystemMXBean();
         double processCpuPercent = -1;
@@ -220,7 +220,7 @@ public final class BrowserStreamHandler extends AbstractWebSocketHandler {
             String sessionId,
             ConnectionInfo connection,
             ServerInfo server,
-            BrowserSessionManager.BrowserInfo browser,
+            BrowserSession.BrowserInfo browser,
             StreamInfo stream) {
     }
 

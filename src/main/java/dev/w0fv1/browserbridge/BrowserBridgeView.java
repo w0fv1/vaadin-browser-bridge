@@ -19,7 +19,7 @@ public final class BrowserBridgeView extends VerticalLayout implements BeforeEnt
     private final BrowserStreamComponent stream = new BrowserStreamComponent();
     private final Div status = new Div();
     private String targetUrl = DEFAULT_URL;
-    private BrowserSessionManager.BrowserSession session;
+    private BrowserSessionLease lease;
 
     public BrowserBridgeView(BrowserSessionManager sessions) {
         this.sessions = sessions;
@@ -43,14 +43,15 @@ public final class BrowserBridgeView extends VerticalLayout implements BeforeEnt
     }
 
     private void start() {
-        if (session != null) {
-            sessions.close(session.id());
-            session = null;
+        if (lease != null) {
+            lease.close();
+            lease = null;
         }
         try {
-            session = sessions.create(targetUrl);
+            lease = sessions.openDefault(targetUrl);
+            BrowserSession session = lease.session();
             stream.setSessionId(session.id());
-            status.setText("会话 " + session.id() + " 已创建");
+            status.setText("会话 " + session.id() + " 已就绪");
         } catch (RuntimeException failure) {
             status.setText("创建会话失败：" + failure.getMessage());
         }
@@ -58,9 +59,9 @@ public final class BrowserBridgeView extends VerticalLayout implements BeforeEnt
 
     @Override
     protected void onDetach(DetachEvent detachEvent) {
-        if (session != null) {
-            sessions.close(session.id());
-            session = null;
+        if (lease != null) {
+            lease.close();
+            lease = null;
         }
     }
 }

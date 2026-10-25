@@ -354,7 +354,10 @@ class BrowserStreamElement extends HTMLElement {
       if (browser.headless) mode = 'headless'
       runtime = `${mode} ${browser.channel || 'bundled'}`
     }
-    this.browserInfo.textContent = `浏览器 | ${browser.engine} ${browser.browserVersion} | Playwright ${browser.playwrightVersion} | 运行 ${runtime} | 配置 ${browser.profileId || '--'} | Context ${browser.contextOpen ? 'OPEN' : 'CLOSED'} | 标签页 ${browser.tabCount} | 当前 ${browser.activeTitle || '无标题'} | ${browser.activeUrl || 'about:blank'} | ${network} | 服务端帧 ${stream.framesSent} | 流量 ${this.#bytes(stream.bytesSent)} | 当前帧 ${this.#bytes(stream.lastFrameBytes)} | 输入 ${input.lastAppliedSequence ?? '--'}/${input.lastReceivedSequence ?? '--'} | 队列 ${input.pendingOperations ?? '--'} | 拒绝 ${input.rejectedOperations ?? '--'}`
+    const failure = browser.lastFailure
+      ? ` | 最近错误 ${browser.lastFailure.operation}: ${browser.lastFailure.message}`
+      : ''
+    this.browserInfo.textContent = `浏览器 | ${browser.engine} ${browser.browserVersion} | Playwright ${browser.playwrightVersion} | 运行 ${runtime} | 配置 ${browser.profileId || '--'} | Context ${browser.contextOpen ? 'OPEN' : 'CLOSED'} | 标签页 ${browser.tabCount} | 当前 ${browser.activeTitle || '无标题'} | ${browser.activeUrl || 'about:blank'} | ${network} | 服务端帧 ${stream.framesSent} | 流量 ${this.#bytes(stream.bytesSent)} | 当前帧 ${this.#bytes(stream.lastFrameBytes)} | 输入 ${input.lastAppliedSequence ?? '--'}/${input.lastReceivedSequence ?? '--'} | 队列 ${input.pendingOperations ?? '--'} | 拒绝 ${input.rejectedOperations ?? '--'}${failure}`
   }
 
   #bytes(value) {
