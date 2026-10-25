@@ -3,6 +3,7 @@ package dev.w0fv1.browserbridge;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.file.Path;
 
@@ -19,7 +20,8 @@ final class BrowserSessionLeaseTest {
                 BrowserMode.HEADLESS, BrowserChannel.CHROME, profileRoot);
 
         try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
-            BrowserSessionManager manager = new BrowserSessionManager(runtime, properties);
+            BrowserEnvironmentStore environments = new BrowserEnvironmentStore(properties, new ObjectMapper());
+            BrowserSessionManager manager = new BrowserSessionManager(runtime, properties, environments);
             try {
                 BrowserSessionLease first = manager.openDefault("about:blank");
                 BrowserSessionLease second = manager.openDefault("about:blank");

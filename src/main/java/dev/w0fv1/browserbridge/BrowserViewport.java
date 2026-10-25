@@ -91,6 +91,16 @@ final class BrowserViewport {
         targetBounds.addProperty("width", targetWidth + insetWidth);
         targetBounds.addProperty("height", targetHeight + insetHeight);
         setWindowBounds(windowId, targetBounds);
+        readViewportMetrics();
+        if (clientWidth != targetWidth || clientHeight != targetHeight) {
+            targetBounds.addProperty(
+                    "width",
+                    targetBounds.get("width").getAsInt() + targetWidth - clientWidth);
+            targetBounds.addProperty(
+                    "height",
+                    targetBounds.get("height").getAsInt() + targetHeight - clientHeight);
+            setWindowBounds(windowId, targetBounds);
+        }
 
         JsonObject applied = cdp.send("Browser.getWindowForTarget").getAsJsonObject("bounds");
         lockedOuterWidth = applied.get("width").getAsInt();

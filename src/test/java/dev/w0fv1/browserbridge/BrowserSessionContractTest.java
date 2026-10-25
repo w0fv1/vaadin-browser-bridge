@@ -1,5 +1,6 @@
 package dev.w0fv1.browserbridge;
 
+import com.microsoft.playwright.options.ColorScheme;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -17,6 +19,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.ZoneId;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -65,7 +70,7 @@ final class BrowserSessionContractTest {
                 BrowserMode.HEADLESS, BrowserChannel.CHROME, profileRoot);
 
         try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
-            BrowserSessionManager manager = new BrowserSessionManager(runtime, properties);
+            BrowserSessionManager manager = manager(runtime, properties);
             try {
                 BrowserSessionLease lease = manager.open("close-race", baseUrl);
                 BrowserSession session = lease.session();
@@ -103,13 +108,60 @@ final class BrowserSessionContractTest {
         }
     }
 
+    @Test
+    void managedHeadlessEnvironmentPreservesViewportAndInput() throws Exception {
+        verifyManagedEnvironment(BrowserMode.HEADLESS);
+    }
+
+    @Test
+    @Tag("headed")
+    void managedHeadedEnvironmentPreservesViewportAndInput() throws Exception {
+        verifyManagedEnvironment(BrowserMode.HEADED);
+    }
+
+    private void verifyManagedEnvironment(BrowserMode mode) throws Exception {
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
+                mode, BrowserChannel.CHROME, profileRoot);
+        BrowserEnvironmentStore environments = new BrowserEnvironmentStore(properties, new ObjectMapper());
+        BrowserProfileId profileId = new BrowserProfileId("managed-" + mode.name().toLowerCase());
+        environments.save(BrowserEnvironmentProfile.managedProfile(
+                profileId,
+                Locale.forLanguageTag("fr-CA"),
+                ZoneId.of("Asia/Tokyo"),
+                ColorScheme.DARK,
+                1.5,
+                Set.of(BrowserPermission.GEOLOCATION)));
+
+        try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
+            BrowserSessionManager manager = new BrowserSessionManager(runtime, properties, environments);
+            BrowserSessionLease lease = null;
+            try {
+                lease = manager.open(profileId.value(), baseUrl);
+                BrowserSession session = lease.session();
+                session.resizeViewport(1000, 600);
+                awaitTitle(session, "state:1000x600:none");
+                session.down(new BrowserInput("down", 1, 500, 300, 0, 1, 1, System.currentTimeMillis()));
+                session.up(new BrowserInput("up", 2, 500, 300, 0, 0, 1, System.currentTimeMillis()));
+                awaitTitle(session, "click:500x300:1000x600");
+
+                BufferedImage image = awaitImage(session);
+                assertThat(image.getWidth()).isEqualTo(1500);
+                assertThat(image.getHeight()).isEqualTo(900);
+                assertThat(session.browserInfo().environmentMode()).isEqualTo(BrowserEnvironmentMode.MANAGED);
+            } finally {
+                if (lease != null) lease.close();
+                manager.shutdown();
+            }
+        }
+    }
+
     private void verifyContract(BrowserMode mode) throws Exception {
         BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
                 mode, BrowserChannel.CHROME, profileRoot);
         String profileId = "contract-" + mode.name().toLowerCase();
 
         try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
-            BrowserSessionManager manager = new BrowserSessionManager(runtime, properties);
+            BrowserSessionManager manager = manager(runtime, properties);
             BrowserSessionLease lease = null;
             try {
                 lease = manager.open(profileId, baseUrl);
@@ -181,8 +233,16 @@ final class BrowserSessionContractTest {
         }
     }
 
-    private static void awaitLatch(CountDownLatch start) {
-        try {
+    private static BrowserSessionManager manager(
+            BrowserRuntime runtime,
+            BrowserRuntimeProperties properties) {
+        return new BrowserSessionManager(
+                runtime,
+                properties,
+                new BrowserEnvironmentStore(properties, new ObjectMapper()));
+    }
+
+    private static void awaitLatch(CountDownLatch start) {        try {
             start.await();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();

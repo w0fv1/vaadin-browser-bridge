@@ -10,6 +10,7 @@
 - **统一运行模式**：headed 与 headless 共用同一 Chrome 通道、持久化 context、会话、采帧与输入实现；headless 不需要图形桌面。
 - **持久化配置**：每个配置目录保留 cookie、localStorage 与登录状态，重启会话不丢失。
 - **Profile 租约**：命名 profile 在一次运行中只能被一个活动会话占用，避免多个 Chrome 进程争用同一目录。
+- **环境画像**：每个 Profile 可固定语言、时区、色彩方案、设备像素比和权限，也可保持原生环境。
 - **多页面共享**：同一 profile 的多个页面复用同一 Chrome 会话，最后一个页面释放后才关闭浏览器。
 - **窗口与画布尺寸锁定**：前端画布通过 `ResizeObserver` 上报尺寸，服务端用 CDP 把 Chrome 内容区锁定为同一尺寸；画面平铺拉伸，输入坐标按实际内容区比例映射。
 - **稳定采帧**：直接通过 CDP `Page.captureScreenshot` 抓取合成器表面，不触发视口覆盖和窗口闪烁。
@@ -65,6 +66,40 @@ http://localhost:8080/?url=https://example.com/
 
 两种模式只保证应用层行为一致。无头模式没有真实操作系统窗口，GPU、媒体解码、字体和窗口外观等能力仍取决于运行环境。需要完整的 headed 窗口与图形行为时，应在隔离的虚拟显示环境运行 headed，而不是在 headless 上伪装浏览器环境。
 
+## 浏览器环境画像
+
+每个 Profile 的 Chrome 数据目录可以直接放置 `environment.json`：
+
+```text
+~/.browser-bridge/profiles/<profile-id>/
+├── environment.json
+└── Chrome 配置、Cookie 与本地存储
+```
+
+没有 `environment.json` 时使用 `NATIVE` 模式，完整继承真实 Chrome 与操作系统环境。需要固定环境时写入：
+
+```json
+{
+  "profileId": "demo",
+  "mode": "MANAGED",
+  "locale": "fr-CA",
+  "timezone": "America/Toronto",
+  "colorScheme": "DARK",
+  "deviceScaleFactor": 1.25,
+  "permissions": ["GEOLOCATION", "CLIPBOARD_READ"]
+}
+```
+
+- `profileId` 必须与目录名一致，只允许字母、数字、下划线和连字符，最长 64 个字符。
+- `mode` 为 `NATIVE` 或 `MANAGED`；`NATIVE` 不允许覆盖其他环境字段。
+- `locale` 使用 BCP 47 标签，`timezone` 使用 IANA 时区标识，`colorScheme` 为 `LIGHT`、`DARK` 或 `NO_PREFERENCE`。
+- `deviceScaleFactor` 范围为 `0.5` 至 `4.0`，通过 Chrome 的设备像素比启动参数应用。
+- `permissions` 使用 [`BrowserPermission.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPermission.java) 中的枚举名。
+
+画像在 Profile 租约创建时读取，运行中不会热更新；修改后新建会话生效。同一 Profile 同时只允许一个活动会话。视口尺寸仍由页面 `viewport.resize` 流程管理，不写入画像。
+
+环境画像只使用 Playwright 与 Chrome 原生选项，不注入 stealth 脚本，也不修改 Canvas、WebGL、字体或浏览器原型。
+
 ## 结构
 
 | 职责 | 入口 |
@@ -72,6 +107,8 @@ http://localhost:8080/?url=https://example.com/
 | 运行配置 | [`BrowserRuntimeProperties.java`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntimeProperties.java) |
 | Playwright 与 Chrome 生命周期 | [`BrowserRuntime.java`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntime.java) |
 | Profile 目录与租约 | [`BrowserProfileRegistry.java`](src/main/java/dev/w0fv1/browserbridge/BrowserProfileRegistry.java) |
+| 环境画像与校验 | [`BrowserEnvironmentProfile.java`](src/main/java/dev/w0fv1/browserbridge/BrowserEnvironmentProfile.java) |
+| 画像文件存储 | [`BrowserEnvironmentStore.java`](src/main/java/dev/w0fv1/browserbridge/BrowserEnvironmentStore.java) |
 | 会话、输入与失败状态 | [`BrowserSession.java`](src/main/java/dev/w0fv1/browserbridge/BrowserSession.java) |
 | 标签页与采帧 | [`BrowserTab.java`](src/main/java/dev/w0fv1/browserbridge/BrowserTab.java) |
 | Headed/headless 视口语义 | [`BrowserViewport.java`](src/main/java/dev/w0fv1/browserbridge/BrowserViewport.java) |
