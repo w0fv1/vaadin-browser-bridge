@@ -9,11 +9,13 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
 public final class BrowserRuntime implements AutoCloseable {
     private final BrowserRuntimeProperties properties;
     private final Playwright playwright;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     public BrowserRuntime(BrowserRuntimeProperties properties) {
         this.properties = properties;
@@ -34,13 +36,11 @@ public final class BrowserRuntime implements AutoCloseable {
         return options;
     }
 
-    BrowserRuntimeProperties properties() {
-        return properties;
-    }
-
     @Override
     @PreDestroy
     public void close() {
-        playwright.close();
+        if (closed.compareAndSet(false, true)) {
+            playwright.close();
+        }
     }
 }

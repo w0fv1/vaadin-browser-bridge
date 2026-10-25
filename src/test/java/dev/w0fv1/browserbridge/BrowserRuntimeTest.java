@@ -26,6 +26,8 @@ final class BrowserRuntimeTest {
             assertThat(options.ignoreDefaultArgs).isNull();
             assertThat(options.args).containsExactly("--no-first-run", "--no-default-browser-check");
             assertThat(options.viewportSize).isEmpty();
+            runtime.close();
+            runtime.close();
         }
     }
 

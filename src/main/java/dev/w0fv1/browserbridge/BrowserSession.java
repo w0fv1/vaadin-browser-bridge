@@ -551,8 +551,14 @@ public final class BrowserSession {
         if (failure.getMessage() != null) {
             message = failure.getMessage();
         }
-        lastFailure.set(new BrowserFailure(operation, message, System.currentTimeMillis()));
-        log.warn("浏览器{}操作失败: {}", operation, message);
+        BrowserFailure current = new BrowserFailure(operation, message, System.currentTimeMillis());
+        BrowserFailure previous = lastFailure.getAndSet(current);
+        boolean changed = previous == null
+                || !previous.operation().equals(current.operation())
+                || !previous.message().equals(current.message());
+        if (changed) {
+            log.warn("浏览器{}操作失败: {}", operation, message);
+        }
     }
 
     private static String normalizeUrl(String url) {
