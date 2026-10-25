@@ -3,6 +3,8 @@ package dev.w0fv1.browserbridge;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.Playwright;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -12,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public final class BrowserSessionManager {
+    private static final Logger log = LoggerFactory.getLogger(BrowserSessionManager.class);
     private static final String DEFAULT_PROFILE = "default";
 
     private final BrowserRuntime runtime;
@@ -34,32 +37,47 @@ public final class BrowserSessionManager {
 
     public BrowserSession create(String profileId, String url) {
         BrowserProfileLease lease = profiles.acquire(profileId);
-        BrowserContext context;
+        BrowserContext context = null;
+        BrowserSession session = null;
         try {
             context = runtime.launch(lease.directory());
-        } catch (RuntimeException failure) {
-            lease.close();
-            throw new IllegalStateException("无法启动真实 Chrome，配置 " + profileId, failure);
-        }
-        String browserVersion = Optional.ofNullable(context.browser())
-                .map(browser -> browser.version())
-                .orElse("unknown");
-        BrowserSession session = new BrowserSession(
-                UUID.randomUUID().toString(),
-                context,
-                browserVersion,
-                playwrightVersion,
-                properties.mode(),
-                properties.channel(),
-                lease);
-        try {
+            String browserVersion = Optional.ofNullable(context.browser())
+                    .map(browser -> browser.version())
+                    .orElse("unknown");
+            session = new BrowserSession(
+                    UUID.randomUUID().toString(),
+                    context,
+                    browserVersion,
+                    playwrightVersion,
+                    properties.mode(),
+                    properties.channel(),
+                    lease);
             session.initialize(url);
+            sessions.put(session.id(), session);
+            return session;
         } catch (RuntimeException failure) {
-            session.close();
-            throw failure;
+            if (session != null) {
+                session.close();
+            } else {
+                boolean contextClosed = true;
+                if (context != null) {
+                    try {
+                        context.close();
+                    } catch (RuntimeException closeFailure) {
+                        contextClosed = false;
+                        log.warn("启动失败后无法关闭浏览器 context: {}", closeFailure.getMessage());
+                    }
+                }
+                if (contextClosed) {
+                    lease.close();
+                }
+            }
+            String message = "浏览器会话初始化失败";
+            if (context == null) {
+                message = "无法启动真实 Chrome";
+            }
+            throw new IllegalStateException(message + "，配置 " + profileId, failure);
         }
-        sessions.put(session.id(), session);
-        return session;
     }
 
     public BrowserSession require(String id) {

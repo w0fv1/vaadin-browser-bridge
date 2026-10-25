@@ -46,10 +46,11 @@ http://localhost:8080/?url=https://example.com/
 
 ```powershell
 .\gradlew.bat build
-.\gradlew.bat test --tests "dev.w0fv1.browserbridge.BrowserSessionContractTest"
+.\gradlew.bat test
+.\gradlew.bat headedTest
 ```
 
-[`BrowserSessionContractTest.java`](src/test/java/dev/w0fv1/browserbridge/BrowserSessionContractTest.java) 使用本机真实 Chrome 和回环 HTTP 页面，在 headed 与 headless 下执行同一组契约。
+`test` 运行 headless 契约；`headedTest` 运行需要图形桌面的真实 headed Chrome 契约。[`BrowserSessionContractTest.java`](src/test/java/dev/w0fv1/browserbridge/BrowserSessionContractTest.java) 使用本机真实 Chrome 和回环 HTTP 页面，在两种模式下执行同一组功能契约。
 
 ## 配置
 

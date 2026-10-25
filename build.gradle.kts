@@ -30,5 +30,19 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("headed")
+    }
+}
+
+tasks.register<Test>("headedTest") {
+    description = "Runs browser tests that require a graphical desktop"
+    group = "verification"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    dependsOn(tasks.named("testClasses"))
+    useJUnitPlatform {
+        includeTags("headed")
+    }
+    shouldRunAfter(tasks.test)
 }

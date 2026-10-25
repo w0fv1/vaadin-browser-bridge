@@ -4,10 +4,10 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -17,11 +17,17 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+@Timeout(60)
 final class BrowserSessionContractTest {
     @TempDir
     Path profileRoot;
@@ -42,9 +48,60 @@ final class BrowserSessionContractTest {
         if (server != null) server.stop(0);
     }
 
-    @ParameterizedTest
-    @EnumSource(BrowserMode.class)
-    void preservesViewportInputTabsAndPersistentStorage(BrowserMode mode) throws Exception {
+    @Test
+    void headlessPreservesViewportInputTabsAndPersistentStorage() throws Exception {
+        verifyContract(BrowserMode.HEADLESS);
+    }
+
+    @Test
+    @Tag("headed")
+    void headedPreservesViewportInputTabsAndPersistentStorage() throws Exception {
+        verifyContract(BrowserMode.HEADED);
+    }
+
+    @Test
+    void closesWhileCaptureIsRunningWithoutHanging() throws Exception {
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
+                BrowserMode.HEADLESS, BrowserChannel.CHROME, profileRoot);
+
+        try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
+            BrowserSessionManager manager = new BrowserSessionManager(runtime, properties);
+            try {
+                BrowserSession session = manager.create("close-race", baseUrl);
+                session.resizeViewport(800, 600);
+                awaitImage(session);
+
+                CountDownLatch start = new CountDownLatch(1);
+                ExecutorService workers = Executors.newFixedThreadPool(2);
+                try {
+                    Future<?> captures = workers.submit(() -> {
+                        awaitLatch(start);
+                        for (int index = 0; index < 100; index++) {
+                            session.capture();
+                        }
+                        return null;
+                    });
+                    Future<?> closing = workers.submit(() -> {
+                        awaitLatch(start);
+                        session.close();
+                        return null;
+                    });
+                    start.countDown();
+
+                    closing.get(15, TimeUnit.SECONDS);
+                    captures.get(15, TimeUnit.SECONDS);
+                    assertThat(session.capture()).isNull();
+                    assertThat(session.browserInfo().contextOpen()).isFalse();
+                } finally {
+                    workers.shutdownNow();
+                }
+            } finally {
+                manager.shutdown();
+            }
+        }
+    }
+
+    private void verifyContract(BrowserMode mode) throws Exception {
         BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
                 mode, BrowserChannel.CHROME, profileRoot);
         String profileId = "contract-" + mode.name().toLowerCase();
@@ -60,10 +117,12 @@ final class BrowserSessionContractTest {
                 session.up(new BrowserInput("up", 2, 500, 300, 0, 0, 1, System.currentTimeMillis()));
                 awaitTitle(session, "click:500x300:1000x600");
 
-                byte[] frame = awaitFrame(session);
-                BufferedImage image = ImageIO.read(new ByteArrayInputStream(frame));
-                assertThat(image).isNotNull();
-                assertThat(image.getWidth() * 600).isEqualTo(image.getHeight() * 1000);
+                BufferedImage image = awaitImage(session);
+                assertFrameScale(image, mode);
+                int pixel = image.getRGB(10, 10);
+                assertThat(red(pixel)).isGreaterThan(150);
+                assertThat(green(pixel)).isLessThan(90);
+                assertThat(blue(pixel)).isLessThan(90);
 
                 session.openTab(baseUrl + "/second");
                 await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
@@ -73,6 +132,13 @@ final class BrowserSessionContractTest {
                     assertThat(state.tabs().get(1).url()).endsWith("/second");
                     assertThat(state.activeTabId()).isEqualTo(state.tabs().get(1).id());
                 });
+
+                BufferedImage secondImage = awaitImage(session);
+                assertFrameScale(secondImage, mode);
+                int secondPixel = secondImage.getRGB(500, 300);
+                assertThat(green(secondPixel)).isGreaterThan(80);
+                assertThat(red(secondPixel)).isLessThan(90);
+                assertThat(blue(secondPixel)).isLessThan(90);
 
                 BrowserSession.TabsState state = session.state();
                 session.closeTab(state.activeTabId());
@@ -86,9 +152,12 @@ final class BrowserSessionContractTest {
                 assertThat(info.headless()).isEqualTo(mode.headless());
                 assertThat(info.channel()).isEqualTo("chrome");
                 assertThat(info.browserVersion()).isNotBlank();
+                assertThat(info.contextOpen()).isTrue();
                 assertThat(info.lastFailure()).isNull();
 
                 manager.close(session.id());
+                assertThat(session.browserInfo().contextOpen()).isFalse();
+
                 AtomicReference<BrowserSession> reopened = new AtomicReference<>();
                 await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
                     if (reopened.get() == null) {
@@ -107,6 +176,14 @@ final class BrowserSessionContractTest {
         }
     }
 
+    private static void awaitLatch(CountDownLatch start) {
+        try {
+            start.await();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private void awaitTitle(BrowserSession session, String expected) {
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
             assertThat(session.capture()).isNotNull();
@@ -114,27 +191,56 @@ final class BrowserSessionContractTest {
         });
     }
 
-    private byte[] awaitFrame(BrowserSession session) {
-        AtomicReference<byte[]> frame = new AtomicReference<>();
+    private BufferedImage awaitImage(BrowserSession session) throws IOException {
+        AtomicReference<BufferedImage> image = new AtomicReference<>();
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
-            frame.set(session.capture());
-            assertThat(frame.get()).isNotNull();
+            byte[] frame = session.capture();
+            assertThat(frame).isNotNull();
+            image.set(ImageIO.read(new ByteArrayInputStream(frame)));
+            assertThat(image.get()).isNotNull();
         });
-        return frame.get();
+        return image.get();
+    }
+
+    private static void assertFrameScale(BufferedImage image, BrowserMode mode) {
+        int scaleX = image.getWidth() / 1000;
+        int scaleY = image.getHeight() / 600;
+        assertThat(scaleX).isGreaterThanOrEqualTo(1);
+        assertThat(scaleX).isEqualTo(scaleY);
+        assertThat(image.getWidth()).isEqualTo(1000 * scaleX);
+        assertThat(image.getHeight()).isEqualTo(600 * scaleX);
+        if (mode.headless()) {
+            assertThat(scaleX).isEqualTo(1);
+        }
+    }
+
+    private static int red(int pixel) {
+        return (pixel >> 16) & 0xff;
+    }    private static int green(int pixel) {
+        return (pixel >> 8) & 0xff;
+    }
+
+    private static int blue(int pixel) {
+        return pixel & 0xff;
     }
 
     private void serveFixture(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         byte[] body;
         if ("/second".equals(path)) {
-            body = "<!doctype html><html><head><title>second</title></head><body>second</body></html>"
-                    .getBytes(StandardCharsets.UTF_8);
+            body = """
+                    <!doctype html>
+                    <html>
+                    <head><meta charset="utf-8"><title>second</title></head>
+                    <body style="margin:0;background:#1f7a1f">second</body>
+                    </html>
+                    """.getBytes(StandardCharsets.UTF_8);
         } else {
             body = """
                     <!doctype html>
                     <html>
                     <head><meta charset="utf-8"><title>fixture</title></head>
-                    <body style="margin:0;width:100vw;height:100vh;overflow:hidden">
+                    <body style="margin:0;width:100vw;height:100vh;overflow:hidden;background:#d22a2a">
                     <script>
                     const viewport = () => `${innerWidth}x${innerHeight}`;
                     const persisted = () => localStorage.getItem('persist') || 'none';

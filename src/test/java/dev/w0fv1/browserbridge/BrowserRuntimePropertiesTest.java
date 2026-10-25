@@ -16,15 +16,12 @@ final class BrowserRuntimePropertiesTest {
 
     @Test
     void defaultsToHeadedChromeAndPersistentProfileRoot() {
-        contextRunner.run(context -> {
-            assertThat(context).hasNotFailed();
-            BrowserRuntimeProperties properties = context.getBean(BrowserRuntimeProperties.class);
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(null, null, null);
 
-            assertThat(properties.mode()).isEqualTo(BrowserMode.HEADED);
-            assertThat(properties.channel()).isEqualTo(BrowserChannel.CHROME);
-            assertThat(properties.profileRoot()).isEqualTo(Path.of(
-                    System.getProperty("user.home"), ".browser-bridge", "profiles"));
-        });
+        assertThat(properties.mode()).isEqualTo(BrowserMode.HEADED);
+        assertThat(properties.channel()).isEqualTo(BrowserChannel.CHROME);
+        assertThat(properties.profileRoot()).isEqualTo(Path.of(
+                System.getProperty("user.home"), ".browser-bridge", "profiles"));
     }
 
     @Test

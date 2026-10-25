@@ -46,9 +46,9 @@ final class BrowserViewport {
     private void resizeHeadless(int targetWidth, int targetHeight) {
         if (appliedWidth == targetWidth && appliedHeight == targetHeight) return;
         page.setViewportSize(targetWidth, targetHeight);
+        readViewportMetrics();
         appliedWidth = targetWidth;
         appliedHeight = targetHeight;
-        readViewportMetrics();
     }
 
     private void resizeHeaded(int targetWidth, int targetHeight) {

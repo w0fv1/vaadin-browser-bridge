@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -62,6 +63,7 @@ public final class BrowserSession {
     private final BrowserChannel channel;
     private final BrowserProfileLease profileLease;
     private final ThreadPoolExecutor executor;
+    private final Object lifecycleLock = new Object();
     private final Map<String, BrowserTab> tabs = new LinkedHashMap<>();
     private final Map<Page, BrowserTab> tabsByPage = new IdentityHashMap<>();
     private final AtomicLong version = new AtomicLong();
@@ -69,6 +71,8 @@ public final class BrowserSession {
     private final AtomicLong lastAppliedInputSequence = new AtomicLong(-1);
     private final AtomicLong rejectedInputOperations = new AtomicLong();
     private final AtomicReference<BrowserFailure> lastFailure = new AtomicReference<>();
+    private volatile boolean closing;
+    private Future<?> closeFuture;
     private volatile String activeTabId;
     private volatile List<TabState> tabsSnapshot = List.of();
     private volatile MouseButton pressedButton;
@@ -173,7 +177,7 @@ public final class BrowserSession {
                 state.tabs().size(),
                 activeTitle,
                 activeUrl,
-                !executor.isShutdown(),
+                contextOpen(),
                 mode.headless(),
                 channel.playwrightName(),
                 new InputInfo(
@@ -185,7 +189,7 @@ public final class BrowserSession {
     }
 
     public boolean canCapture() {
-        return !executor.isShutdown() && executor.getQueue().size() < MAX_CAPTURE_QUEUE;
+        return !closing && !executor.isShutdown() && executor.getQueue().size() < MAX_CAPTURE_QUEUE;
     }
 
     public byte[] capture() {
@@ -198,7 +202,7 @@ public final class BrowserSession {
                 return tab.capture(quality);
             });
         } catch (RuntimeException failure) {
-            if (!executor.isShutdown()) recordFailure("capture", failure);
+            if (!closing && !executor.isShutdown()) recordFailure("capture", failure);
             return null;
         }
     }
@@ -374,17 +378,41 @@ public final class BrowserSession {
     }
 
     public void close() {
-        try {
-            if (!executor.isShutdown()) {
-                submit(() -> {
-                    context.close();
-                    return null;
-                });
+        Future<?> pendingClose;
+        synchronized (lifecycleLock) {
+            if (!closing) {
+                closing = true;
+                try {
+                    pendingClose = executor.submit(() -> {
+                        context.close();
+                        return null;
+                    });
+                } catch (RejectedExecutionException failure) {
+                    pendingClose = null;
+                    recordFailure("close", failure);
+                }
+                closeFuture = pendingClose;
+                executor.shutdown();
+            } else {
+                pendingClose = closeFuture;
             }
-        } catch (RuntimeException failure) {
-            log.debug("浏览器会话关闭时目标已不存在: {}", failure.getMessage());
-        } finally {
-            executor.shutdownNow();
+        }
+        boolean closed = false;
+        if (pendingClose != null) {
+            try {
+                pendingClose.get();
+                closed = true;
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                recordFailure("close", interrupted);
+            } catch (ExecutionException failure) {
+                Throwable cause = failure.getCause();
+                if (cause != null) {
+                    recordFailure("close", cause);
+                }
+            }
+        }
+        if (closed || contextDisconnected()) {
             profileLease.close();
         }
     }
@@ -488,7 +516,7 @@ public final class BrowserSession {
 
     private void executeInput(BrowserInput input, Runnable action) {
         lastReceivedInputSequence.accumulateAndGet(input.sequence(), Math::max);
-        if (executor.isShutdown()) {
+        if (closing || executor.isShutdown()) {
             rejectedInputOperations.incrementAndGet();
             return;
         }
@@ -500,40 +528,55 @@ public final class BrowserSession {
                 recordFailure("input", failure);
             }
         };
-        try {
-            executor.execute(command);
-            return;
-        } catch (RejectedExecutionException ignored) {
-        }
-        while (!executor.isShutdown()) {
+        synchronized (lifecycleLock) {
+            if (closing || executor.isShutdown()) {
+                rejectedInputOperations.incrementAndGet();
+                return;
+            }
+            try {
+                executor.execute(command);
+                return;
+            } catch (RejectedExecutionException ignored) {
+            }
             try {
                 if (executor.getQueue().offer(command, 50, TimeUnit.MILLISECONDS)) return;
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                rejectedInputOperations.incrementAndGet();
-                return;
             }
+            rejectedInputOperations.incrementAndGet();
         }
-        rejectedInputOperations.incrementAndGet();
     }
 
     private void execute(Runnable action) {
-        if (executor.isShutdown()) return;
-        try {
-            executor.execute(() -> {
-                try {
-                    action.run();
-                } catch (RuntimeException failure) {
-                    recordFailure("session", failure);
-                }
-            });
-        } catch (RejectedExecutionException ignored) {
+        synchronized (lifecycleLock) {
+            if (closing || executor.isShutdown()) return;
+            try {
+                executor.execute(() -> {
+                    try {
+                        action.run();
+                    } catch (RuntimeException failure) {
+                        recordFailure("session", failure);
+                    }
+                });
+            } catch (RejectedExecutionException ignored) {
+            }
         }
     }
 
     private <T> T submit(Callable<T> action) {
+        Future<T> future;
+        synchronized (lifecycleLock) {
+            if (closing || executor.isShutdown()) {
+                throw new IllegalStateException("浏览器会话已关闭");
+            }
+            try {
+                future = executor.submit(action);
+            } catch (RejectedExecutionException exception) {
+                throw new IllegalStateException("浏览器会话已关闭", exception);
+            }
+        }
         try {
-            return executor.submit(action).get();
+            return future.get();
         } catch (ExecutionException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof RuntimeException runtimeException) throw runtimeException;
@@ -541,8 +584,6 @@ public final class BrowserSession {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
-        } catch (RejectedExecutionException exception) {
-            throw new IllegalStateException("浏览器会话已关闭", exception);
         }
     }
 
@@ -558,6 +599,23 @@ public final class BrowserSession {
                 || !previous.message().equals(current.message());
         if (changed) {
             log.warn("浏览器{}操作失败: {}", operation, message);
+        }
+    }
+
+    private boolean contextOpen() {
+        if (closing || executor.isShutdown()) return false;
+        return browserConnected();
+    }
+
+    private boolean contextDisconnected() {
+        return !browserConnected();
+    }
+
+    private boolean browserConnected() {
+        try {
+            return context.browser() != null && context.browser().isConnected();
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 
