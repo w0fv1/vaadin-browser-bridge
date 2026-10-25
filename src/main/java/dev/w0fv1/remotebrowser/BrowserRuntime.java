@@ -1,6 +1,5 @@
 package dev.w0fv1.remotebrowser;
 
-import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -11,8 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-@Component
-public final class BrowserRuntime {
+final class BrowserRuntime {
     private static final Duration LAUNCH_TIMEOUT = Duration.ofSeconds(30);
 
     private final BrowserRuntimeProperties properties;

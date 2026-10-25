@@ -1,6 +1,5 @@
 package dev.w0fv1.remotebrowser;
 
-import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -15,18 +14,18 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 
-@Component
-public final class BrowserStreamHandler extends AbstractWebSocketHandler {
+final class BrowserStreamHandler extends AbstractWebSocketHandler {
     private static final long TELEMETRY_INTERVAL_NANOS = 500_000_000L;
     private static final int FRAME_MAGIC = 0x42535452;
     private static final int FRAME_HEADER_BYTES = 12;
     private static final int FRAME_CHUNK_BYTES = 16 * 1024;
     private static final String HOST_NAME = hostName();
     private final BrowserSessionManager sessions;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
-    public BrowserStreamHandler(BrowserSessionManager sessions) {
+    BrowserStreamHandler(BrowserSessionManager sessions, ObjectMapper mapper) {
         this.sessions = sessions;
+        this.mapper = mapper;
     }
 
     @Override

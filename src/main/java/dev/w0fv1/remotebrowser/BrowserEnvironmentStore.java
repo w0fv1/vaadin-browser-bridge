@@ -1,6 +1,5 @@
 package dev.w0fv1.remotebrowser;
 
-import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -17,8 +16,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 
-@Component
-public final class BrowserEnvironmentStore {
+final class BrowserEnvironmentStore {
     private static final String MANIFEST_FILE = "environment.json";
 
     private final Path profileRoot;

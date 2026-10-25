@@ -1,35 +1,30 @@
 plugins {
-    java
-    id("org.springframework.boot") version "4.1.1"
-    id("io.spring.dependency-management") version "1.1.7"
-    id("com.vaadin") version "25.3.2"
+    `java-library`
+    `maven-publish`
 }
 
 group = "dev.w0fv1"
-version = "0.1.0"
+version = "0.2.0"
 
-java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
-
-vaadin { optimizeBundle = false }
-
-dependencies {
-    implementation(platform("com.vaadin:vaadin-bom:25.3.2"))
-    implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation("org.springframework.boot:spring-boot-starter-websocket")
-    implementation("com.vaadin:vaadin-spring-boot-starter")
-    developmentOnly(platform("com.vaadin:vaadin-bom:25.3.2"))
-    developmentOnly("com.vaadin:vaadin-dev")
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.awaitility:awaitility")
+java {
+    withSourcesJar()
+    withJavadocJar()
 }
 
-tasks.withType<JavaCompile>().configureEach {
+val springBootVersion = providers.gradleProperty("springBootVersion").get()
+val vaadinVersion = providers.gradleProperty("vaadinVersion").get()
+
+tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+    options.release.set(21)
     options.compilerArgs.add("-parameters")
-    options.compilerArgs.add("-Xlint:deprecation")
 }
 
-tasks.test {
+tasks.withType<Javadoc> {
+    options.encoding = "UTF-8"
+}
+
+tasks.named<Test>("test") {
     useJUnitPlatform {
         excludeTags("headed")
     }
@@ -45,4 +40,51 @@ tasks.register<Test>("headedTest") {
         includeTags("headed")
     }
     shouldRunAfter(tasks.test)
+}
+dependencies {
+    api(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
+    api(platform("com.vaadin:vaadin-bom:$vaadinVersion"))
+    api("com.vaadin:vaadin-spring-boot-starter")
+    api("org.springframework.boot:spring-boot-starter-websocket")
+
+    implementation("tools.jackson.core:jackson-databind")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.awaitility:awaitility")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"])
+            artifactId = "vaadin-remote-browser"
+
+            pom {
+                name.set("Vaadin Remote Browser")
+                description.set("Embed a real hosted Chrome inside Vaadin applications over the DevTools protocol")
+                url.set("https://github.com/w0fv1/vaadin-remote-browser")
+
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://opensource.org/licenses/MIT")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("w0fv1")
+                        name.set("w0fv1")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/w0fv1/vaadin-remote-browser.git")
+                    developerConnection.set("scm:git:ssh://github.com/w0fv1/vaadin-remote-browser.git")
+                    url.set("https://github.com/w0fv1/vaadin-remote-browser")
+                }
+            }
+        }
+    }
 }

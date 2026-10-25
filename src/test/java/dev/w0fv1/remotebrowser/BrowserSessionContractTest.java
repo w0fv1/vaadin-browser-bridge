@@ -67,7 +67,7 @@ final class BrowserSessionContractTest {
     void closesWhileCaptureIsRunningWithoutHanging() throws Exception {
         BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
         try {
-            BrowserSessionLease lease = manager.open("close-race", baseUrl);
+            RemoteBrowserSession lease = manager.open(new BrowserProfileId("close-race"), baseUrl);
             BrowserSession session = lease.session();
             session.resizeViewport(800, 600);
             awaitImage(session);
@@ -116,9 +116,9 @@ final class BrowserSessionContractTest {
                 Set.of(BrowserPermission.GEOLOCATION)));
 
         BrowserSessionManager manager = manager(properties);
-        BrowserSessionLease lease = null;
+        RemoteBrowserSession lease = null;
         try {
-            lease = manager.open(profileId.value(), baseUrl);
+            lease = manager.open(profileId, baseUrl);
             BrowserSession session = lease.session();
             session.resizeViewport(1000, 600);
             awaitTitle(session, "state:1000x600:none");
@@ -139,7 +139,7 @@ final class BrowserSessionContractTest {
     @Test
     void pointerFloodKeepsCaptureAndInputAlive() throws Exception {
         BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
-        try (BrowserSessionLease lease = manager.open("pointer-flood", baseUrl)) {
+        try (RemoteBrowserSession lease = manager.open(new BrowserProfileId("pointer-flood"), baseUrl)) {
             BrowserSession session = lease.session();
             session.resizeViewport(800, 600);
             awaitImage(session);
@@ -160,9 +160,9 @@ final class BrowserSessionContractTest {
     }
 
     private void verifyContract(BrowserMode mode) throws Exception {
-        String profileId = "contract-" + mode.name().toLowerCase();
+        BrowserProfileId profileId = new BrowserProfileId("contract-" + mode.name().toLowerCase());
         BrowserSessionManager manager = manager(mode);
-        BrowserSessionLease lease = null;
+        RemoteBrowserSession lease = null;
         try {
             lease = manager.open(profileId, baseUrl);
             BrowserSession session = lease.session();
@@ -212,7 +212,7 @@ final class BrowserSessionContractTest {
             awaitTitle(session, "text:中文输入");
 
             BrowserSession.BrowserInfo info = session.browserInfo();
-            assertThat(info.profileId()).isEqualTo(profileId);
+            assertThat(info.profileId()).isEqualTo(profileId.value());
             assertThat(info.headless()).isEqualTo(mode.headless());
             assertThat(info.engine()).isEqualTo("Google Chrome");
             assertThat(info.browserVersion()).startsWith("Chrome/");
@@ -222,7 +222,7 @@ final class BrowserSessionContractTest {
             lease.close();
             assertThat(session.browserInfo().contextOpen()).isFalse();
 
-            AtomicReference<BrowserSessionLease> reopened = new AtomicReference<>();
+            AtomicReference<RemoteBrowserSession> reopened = new AtomicReference<>();
             await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
                 if (reopened.get() == null) reopened.set(manager.open(profileId, baseUrl));
             });

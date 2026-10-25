@@ -5,9 +5,10 @@ out/
 bin/
 
 node_modules/
-src/main/frontend/generated/
-src/main/bundles/
-vite.generated.ts
+sample/node_modules/
+sample/src/main/frontend/
+sample/src/main/bundles/
+sample/vite.generated.ts
 
 .idea/
 .vscode/
