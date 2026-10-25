@@ -27,6 +27,27 @@ final class BrowserRuntimePropertiesTest {
     }
 
     @Test
+    void defaultsStreamEndpoint() {
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(null, null, null, null);
+
+        assertThat(properties.enabled()).isTrue();
+        assertThat(properties.websocketPath()).isEqualTo("/browser-stream");
+        assertThat(properties.allowedOriginPatterns()).isEmpty();
+    }
+
+    @Test
+    void normalizesStreamEndpointPath() {
+        assertThat(properties("stream/browser/").websocketPath()).isEqualTo("/stream/browser");
+        assertThat(properties("/").websocketPath()).isEqualTo("/");
+        assertThat(properties("  ").websocketPath()).isEqualTo("/browser-stream");
+    }
+
+    private static BrowserRuntimeProperties properties(String websocketPath) {
+        return new BrowserRuntimeProperties(
+                BrowserMode.HEADED, BrowserChannel.CHROME, null, null, true, websocketPath, null);
+    }
+
+    @Test
     void bindsHeadlessEdgeAndNormalizedProfileRoot() {
         contextRunner
                 .withPropertyValues(

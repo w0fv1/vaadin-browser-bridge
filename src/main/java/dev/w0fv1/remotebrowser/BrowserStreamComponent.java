@@ -9,6 +9,11 @@ import com.vaadin.flow.component.dependency.JsModule;
 public final class BrowserStreamComponent extends Component {
     public BrowserStreamComponent() {
         getElement().getStyle().set("width", "100%").set("display", "block");
+        setStreamPath(BrowserRuntimeProperties.DEFAULT_WEBSOCKET_PATH);
+    }
+
+    public void setStreamPath(String streamPath) {
+        getElement().setProperty("streamPath", streamPath);
     }
 
     public void setSessionId(String sessionId) {

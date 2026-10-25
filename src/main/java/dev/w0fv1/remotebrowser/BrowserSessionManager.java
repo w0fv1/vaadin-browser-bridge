@@ -3,7 +3,6 @@ package dev.w0fv1.remotebrowser;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
@@ -12,50 +11,84 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-@Component
-public final class BrowserSessionManager {
+final class BrowserSessionManager implements RemoteBrowser {
     private static final Logger log = LoggerFactory.getLogger(BrowserSessionManager.class);
-    private static final String DEFAULT_PROFILE = "default";
+    private static final BrowserProfileId DEFAULT_PROFILE = BrowserProfileId.DEFAULT;
 
     private final BrowserRuntime runtime;
     private final BrowserRuntimeProperties properties;
+    private final BrowserEnvironmentStore environments;
     private final BrowserProfileRegistry profiles;
     private final ObjectMapper mapper;
     private final Map<String, BrowserSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, SharedSession> sharedSessions = new ConcurrentHashMap<>();
 
-    public BrowserSessionManager(
+    BrowserSessionManager(
             BrowserRuntime runtime,
             BrowserRuntimeProperties properties,
             BrowserEnvironmentStore environments,
             ObjectMapper mapper) {
         this.runtime = runtime;
         this.properties = properties;
+        this.environments = environments;
         this.profiles = new BrowserProfileRegistry(properties.profileRoot(), environments);
         this.mapper = mapper;
     }
 
-    public BrowserSessionLease openDefault(String url) {
+    @Override
+    public List<BrowserProfileId> profiles() {
+        return environments.profileIds();
+    }
+
+    @Override
+    public BrowserEnvironmentProfile environment(BrowserProfileId profileId) {
+        return environments.read(profileId);
+    }
+
+    @Override
+    public void saveEnvironment(BrowserEnvironmentProfile environment) {
+        environments.save(environment);
+    }
+
+    @Override
+    public String streamPath() {
+        return properties.websocketPath();
+    }
+
+    @Override
+    public boolean isOpen(BrowserProfileId profileId) {
+        SharedSession shared = sharedSessions.get(profileId.value());
+        return shared != null && shared.session.isAvailable();
+    }
+
+    RemoteBrowserSession openDefault(String url) {
         return open(DEFAULT_PROFILE, url);
     }
 
-    public synchronized BrowserSessionLease open(String profileId, String url) {
-        SharedSession shared = sharedSessions.get(profileId);
+    @Override
+    public synchronized RemoteBrowserSession open(BrowserProfileId profileId, String url) {
+        SharedSession shared = sharedSessions.get(profileId.value());
         if (shared != null && !shared.session.isAvailable()) {
-            sharedSessions.remove(profileId);
+            sharedSessions.remove(profileId.value());
             sessions.remove(shared.session.id());
             shared.session.close();
             shared = null;
         }
         if (shared == null) {
-            BrowserSession session = createSession(profileId, url);
+            BrowserSession session = createSession(profileId.value(), url);
             shared = new SharedSession(session);
-            sharedSessions.put(profileId, shared);
+            sharedSessions.put(profileId.value(), shared);
             sessions.put(session.id(), session);
         }
         shared.references++;
         SharedSession leased = shared;
-        return new BrowserSessionLease(leased.session, () -> release(profileId, leased.session));
+        return new RemoteBrowserSession(leased.session, () -> release(profileId.value(), leased.session));
+    }
+
+    BrowserSession require(String id) {
+        BrowserSession session = sessions.get(id);
+        if (session == null) throw new IllegalArgumentException("浏览器会话不存在");
+        return session;
     }
 
     private BrowserSession createSession(String profileId, String url) {
@@ -109,12 +142,6 @@ public final class BrowserSessionManager {
         if (closing != null) {
             closing.close();
         }
-    }
-
-    public BrowserSession require(String id) {
-        BrowserSession session = sessions.get(id);
-        if (session == null) throw new IllegalArgumentException("浏览器会话不存在");
-        return session;
     }
 
     @PreDestroy

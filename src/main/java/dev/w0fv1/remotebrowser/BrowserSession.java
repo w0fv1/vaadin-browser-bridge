@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class BrowserSession {
+final class BrowserSession {
     static final int DEFAULT_VIEWPORT_WIDTH = 1280;
     static final int DEFAULT_VIEWPORT_HEIGHT = 720;
     static final int DEFAULT_QUALITY = 75;

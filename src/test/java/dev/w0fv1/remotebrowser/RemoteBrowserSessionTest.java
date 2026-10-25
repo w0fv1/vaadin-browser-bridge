@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Timeout(90)
-final class BrowserSessionLeaseTest {
+final class RemoteBrowserSessionTest {
     private final Path profileRoot = TestProfileRoot.create("lease");
 
     @Test
@@ -21,8 +21,8 @@ final class BrowserSessionLeaseTest {
         BrowserEnvironmentStore environments = new BrowserEnvironmentStore(properties, mapper);
         BrowserSessionManager manager = new BrowserSessionManager(runtime, properties, environments, mapper);
         try {
-            BrowserSessionLease first = manager.openDefault("about:blank");
-            BrowserSessionLease second = manager.openDefault("about:blank");
+            RemoteBrowserSession first = manager.openDefault("about:blank");
+            RemoteBrowserSession second = manager.openDefault("about:blank");
 
             assertThat(second.session().id()).isEqualTo(first.session().id());
             assertThat(first.session().browserInfo().contextOpen()).isTrue();
@@ -33,7 +33,7 @@ final class BrowserSessionLeaseTest {
             second.close();
             assertThat(second.session().browserInfo().contextOpen()).isFalse();
 
-            try (BrowserSessionLease reopened = manager.openDefault("about:blank")) {
+            try (RemoteBrowserSession reopened = manager.openDefault("about:blank")) {
                 assertThat(reopened.session().id()).isNotEqualTo(second.session().id());
                 assertThat(reopened.session().browserInfo().contextOpen()).isTrue();
             }

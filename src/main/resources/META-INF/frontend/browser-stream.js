@@ -3,6 +3,7 @@ class BrowserStreamElement extends HTMLElement {
   #canvas = null
   #resizeObserver = null
   #sessionId = null
+  #streamPath = '/browser-stream'
   #activeTabId = null
   #tabs = []
   #stream = {quality: 75, intervalMillis: 40, networkEnabled: false, bandwidthBytesPerSecond: 500 * 1024, latencyMillis: 0}
@@ -35,6 +36,15 @@ class BrowserStreamElement extends HTMLElement {
     this.#pendingMove = null
     this.#socket?.close()
     this.#socket = null
+  }
+
+  get streamPath() {
+    return this.#streamPath
+  }
+
+  set streamPath(value) {
+    this.#streamPath = value || '/browser-stream'
+    this.#connect()
   }
 
   get sessionId() {
@@ -248,7 +258,7 @@ class BrowserStreamElement extends HTMLElement {
     this.openButton.disabled = true
     this.newTabButton.disabled = true
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${scheme}://${location.host}/browser-stream/${id}`)
+    const socket = new WebSocket(`${scheme}://${location.host}${this.#streamPath}/${id}`)
     socket.binaryType = 'arraybuffer'
     socket.onopen = () => {
       if (generation !== this.#socketGeneration) return
