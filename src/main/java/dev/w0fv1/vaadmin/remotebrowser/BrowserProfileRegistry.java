@@ -1,19 +1,13 @@
 package dev.w0fv1.vaadmin.remotebrowser;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Stream;
 
 final class BrowserProfileRegistry {
-    private static final Logger log = LoggerFactory.getLogger(BrowserProfileRegistry.class);
     private static final String PRIVATE_DIRECTORY = "private";
 
     private final Path root;
@@ -85,17 +79,6 @@ final class BrowserProfileRegistry {
     }
 
     private static void delete(Path directory) {
-        if (!Files.isDirectory(directory)) return;
-        try (Stream<Path> paths = Files.walk(directory)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException failure) {
-                    log.warn("无法清理浏览器私密配置文件: {}", path);
-                }
-            });
-        } catch (IOException failure) {
-            log.warn("无法清理浏览器私密配置目录: {}", directory);
-        }
+        DirectoryTree.delete(directory);
     }
 }
