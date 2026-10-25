@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +24,7 @@ public final class BrowserSessionManager {
     private final BrowserProfileRegistry profiles;
     private final String playwrightVersion;
     private final Map<String, BrowserSession> sessions = new ConcurrentHashMap<>();
+    private final Map<String, SharedSession> sharedSessions = new ConcurrentHashMap<>();
 
     public BrowserSessionManager(BrowserRuntime runtime, BrowserRuntimeProperties properties) {
         this.runtime = runtime;
@@ -31,11 +34,30 @@ public final class BrowserSessionManager {
                 .orElse("unknown");
     }
 
-    public BrowserSession create(String url) {
-        return create(DEFAULT_PROFILE, url);
+    public BrowserSessionLease openDefault(String url) {
+        return open(DEFAULT_PROFILE, url);
     }
 
-    public BrowserSession create(String profileId, String url) {
+    public synchronized BrowserSessionLease open(String profileId, String url) {
+        SharedSession shared = sharedSessions.get(profileId);
+        if (shared != null && !shared.session.isAvailable()) {
+            sharedSessions.remove(profileId);
+            sessions.remove(shared.session.id());
+            shared.session.close();
+            shared = null;
+        }
+        if (shared == null) {
+            BrowserSession session = createSession(profileId, url);
+            shared = new SharedSession(session);
+            sharedSessions.put(profileId, shared);
+            sessions.put(session.id(), session);
+        }
+        shared.references++;
+        SharedSession leased = shared;
+        return new BrowserSessionLease(leased.session, () -> release(profileId, leased.session));
+    }
+
+    private BrowserSession createSession(String profileId, String url) {
         BrowserProfileLease lease = profiles.acquire(profileId);
         BrowserContext context = null;
         BrowserSession session = null;
@@ -53,7 +75,6 @@ public final class BrowserSessionManager {
                     properties.channel(),
                     lease);
             session.initialize(url);
-            sessions.put(session.id(), session);
             return session;
         } catch (RuntimeException failure) {
             if (session != null) {
@@ -80,20 +101,49 @@ public final class BrowserSessionManager {
         }
     }
 
+    private void release(String profileId, BrowserSession session) {
+        BrowserSession closing = null;
+        synchronized (this) {
+            SharedSession shared = sharedSessions.get(profileId);
+            if (shared == null || shared.session != session) return;
+            shared.references--;
+            if (shared.references <= 0) {
+                sharedSessions.remove(profileId);
+                sessions.remove(session.id());
+                closing = session;
+            }
+        }
+        if (closing != null) {
+            closing.close();
+        }
+    }
+
     public BrowserSession require(String id) {
         BrowserSession session = sessions.get(id);
         if (session == null) throw new IllegalArgumentException("浏览器会话不存在");
         return session;
     }
 
-    public void close(String id) {
-        BrowserSession session = sessions.remove(id);
-        if (session != null) session.close();
-    }
-
     @PreDestroy
     void shutdown() {
-        sessions.values().forEach(BrowserSession::close);
-        sessions.clear();
+        List<BrowserSession> closing;
+        synchronized (this) {
+            closing = new ArrayList<>(sharedSessions.size());
+            for (SharedSession shared : sharedSessions.values()) {
+                closing.add(shared.session);
+            }
+            sharedSessions.clear();
+            sessions.clear();
+        }
+        closing.forEach(BrowserSession::close);
+    }
+
+    private static final class SharedSession {
+        private final BrowserSession session;
+        private int references;
+
+        private SharedSession(BrowserSession session) {
+            this.session = session;
+        }
     }
 }

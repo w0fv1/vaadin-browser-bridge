@@ -67,7 +67,8 @@ final class BrowserSessionContractTest {
         try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
             BrowserSessionManager manager = new BrowserSessionManager(runtime, properties);
             try {
-                BrowserSession session = manager.create("close-race", baseUrl);
+                BrowserSessionLease lease = manager.open("close-race", baseUrl);
+                BrowserSession session = lease.session();
                 session.resizeViewport(800, 600);
                 awaitImage(session);
 
@@ -83,7 +84,7 @@ final class BrowserSessionContractTest {
                     });
                     Future<?> closing = workers.submit(() -> {
                         awaitLatch(start);
-                        session.close();
+                        lease.close();
                         return null;
                     });
                     start.countDown();
@@ -94,6 +95,7 @@ final class BrowserSessionContractTest {
                     assertThat(session.browserInfo().contextOpen()).isFalse();
                 } finally {
                     workers.shutdownNow();
+                    lease.close();
                 }
             } finally {
                 manager.shutdown();
@@ -108,8 +110,10 @@ final class BrowserSessionContractTest {
 
         try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
             BrowserSessionManager manager = new BrowserSessionManager(runtime, properties);
+            BrowserSessionLease lease = null;
             try {
-                BrowserSession session = manager.create(profileId, baseUrl);
+                lease = manager.open(profileId, baseUrl);
+                BrowserSession session = lease.session();
                 session.resizeViewport(1000, 600);
                 awaitTitle(session, "state:1000x600:none");
 
@@ -155,22 +159,23 @@ final class BrowserSessionContractTest {
                 assertThat(info.contextOpen()).isTrue();
                 assertThat(info.lastFailure()).isNull();
 
-                manager.close(session.id());
+                lease.close();
                 assertThat(session.browserInfo().contextOpen()).isFalse();
 
-                AtomicReference<BrowserSession> reopened = new AtomicReference<>();
+                AtomicReference<BrowserSessionLease> reopened = new AtomicReference<>();
                 await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
                     if (reopened.get() == null) {
-                        reopened.set(manager.create(profileId, baseUrl));
+                        reopened.set(manager.open(profileId, baseUrl));
                     }
                 });
                 try {
-                    reopened.get().resizeViewport(1000, 600);
-                    awaitTitle(reopened.get(), "state:1000x600:500x300");
+                    reopened.get().session().resizeViewport(1000, 600);
+                    awaitTitle(reopened.get().session(), "state:1000x600:500x300");
                 } finally {
-                    manager.close(reopened.get().id());
+                    reopened.get().close();
                 }
             } finally {
+                if (lease != null) lease.close();
                 manager.shutdown();
             }
         }

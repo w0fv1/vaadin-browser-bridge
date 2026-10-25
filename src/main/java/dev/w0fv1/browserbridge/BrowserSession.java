@@ -192,6 +192,10 @@ public final class BrowserSession {
         return !closing && !executor.isShutdown() && executor.getQueue().size() < MAX_CAPTURE_QUEUE;
     }
 
+    boolean isAvailable() {
+        return !closing && !executor.isShutdown() && browserConnected();
+    }
+
     public byte[] capture() {
         try {
             return submit(() -> {

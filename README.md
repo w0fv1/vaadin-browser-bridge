@@ -10,6 +10,7 @@
 - **统一运行模式**：headed 与 headless 共用同一 Chrome 通道、持久化 context、会话、采帧与输入实现；headless 不需要图形桌面。
 - **持久化配置**：每个配置目录保留 cookie、localStorage 与登录状态，重启会话不丢失。
 - **Profile 租约**：命名 profile 在一次运行中只能被一个活动会话占用，避免多个 Chrome 进程争用同一目录。
+- **多页面共享**：同一 profile 的多个页面复用同一 Chrome 会话，最后一个页面释放后才关闭浏览器。
 - **窗口与画布尺寸锁定**：前端画布通过 `ResizeObserver` 上报尺寸，服务端用 CDP 把 Chrome 内容区锁定为同一尺寸；画面平铺拉伸，输入坐标按实际内容区比例映射。
 - **稳定采帧**：直接通过 CDP `Page.captureScreenshot` 抓取合成器表面，不触发视口覆盖和窗口闪烁。
 - **多标签页**：新建、切换、关闭标签页，支持 `window.open` 弹窗。
