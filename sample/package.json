@@ -1,5 +1,5 @@
 {
-  "name": "vaadin-remote-browser",
+  "name": "vaadmin-remote-browser",
   "license": "MIT",
   "type": "module",
   "dependencies": {

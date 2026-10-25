@@ -1,6 +1,8 @@
-# vaadin-remote-browser
+# Vaadmin Remote Browser
 
-把本机真实 Chrome 嵌进 Vaadin 应用：服务端托管一个持久化浏览器进程，页面通过 WebSocket 接收实时画面并回传鼠标、键盘、滚轮与标签页操作。以库的形式发布，附带 Spring Boot Starter 自动配置。
+Vaadmin 系列的远程浏览器组件：把本机真实 Chrome 嵌进 Vaadin 应用，服务端托管一个持久化浏览器进程，页面通过 WebSocket 接收实时画面并回传鼠标、键盘、滚轮与标签页操作。以库的形式发布，附带 Spring Boot Starter 自动配置。
+
+与 [vaadmin](../vaadmin) 同一命名体系与发布坐标（`dev.w0fv1.vaadmin.*`），但保持独立仓库与独立版本，不并入 vaadmin 的构建。
 
 ## 引入
 
@@ -8,13 +10,13 @@
 
 ```kotlin
 // Nfirco settings.gradle.kts
-include(":app:_sub:vaadin-remote-browser")
+include(":app:_sub:vaadmin-remote-browser")
 
 // Nfirco build.gradle.kts
-implementation(project(":app:_sub:vaadin-remote-browser"))
+implementation(project(":app:_sub:vaadmin-remote-browser"))
 ```
 
-Maven 坐标：`dev.w0fv1:vaadin-remote-browser`。库自带 `META-INF/frontend` 与自动配置，宿主应用只需是 Spring Boot + Vaadin 应用。
+Maven 坐标：`dev.w0fv1:vaadmin-remote-browser`。库自带 `META-INF/frontend` 与自动配置，宿主应用只需是 Spring Boot + Vaadin 应用。
 
 ## 用法
 
@@ -40,16 +42,16 @@ try (RemoteBrowserSession session = remoteBrowser.open(BrowserProfileId.DEFAULT,
 
 | 类型 | 职责 |
 | --- | --- |
-| [`RemoteBrowser`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowser.java) | 门面：配置列表、画像读写、开启会话、查询状态、流地址 |
-| [`RemoteBrowserSession`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserSession.java) | 会话句柄：`sessionId()`、`profileId()`、`environmentMode()`、`close()` |
-| [`RemoteBrowserViewer`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserViewer.java) | 开箱即用的 Vaadin 组件，内含 `BrowserStreamComponent` |
-| [`BrowserStreamComponent`](src/main/java/dev/w0fv1/remotebrowser/BrowserStreamComponent.java) | 只负责画面与输入的元素，供自定义布局使用 |
+| [`RemoteBrowser`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowser.java) | 门面：配置列表、画像读写、开启会话、查询状态、流地址 |
+| [`RemoteBrowserSession`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserSession.java) | 会话句柄：`sessionId()`、`profileId()`、`environmentMode()`、`close()` |
+| [`RemoteBrowserViewer`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserViewer.java) | 开箱即用的 Vaadin 组件，内含 `BrowserStreamComponent` |
+| [`BrowserStreamComponent`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserStreamComponent.java) | 只负责画面与输入的元素，供自定义布局使用 |
 
 会话按 Profile 共享：同一 Profile 的多个 `open` 复用同一个浏览器进程，最后一个句柄关闭才退出。同一 Profile 同时只允许一个活动会话，避免多个 Chrome 争用同一目录。
 
 ## Spring Boot Starter
 
-`browser.remote.enabled=true` 时自动注册 `RemoteBrowser`（含 `BrowserRuntime`、`BrowserEnvironmentStore`、`BrowserSessionManager`）与 WebSocket 端点 `RemoteBrowserWebSocketConfigurer`；所有 Bean 都是 `@ConditionalOnMissingBean`，可以直接覆盖。自动配置入口见 [`RemoteBrowserAutoConfiguration`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserAutoConfiguration.java) 与 [`RemoteBrowserWebSocketAutoConfiguration`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserWebSocketAutoConfiguration.java)。
+`browser.remote.enabled=true` 时自动注册 `RemoteBrowser`（含 `BrowserRuntime`、`BrowserEnvironmentStore`、`BrowserSessionManager`）与 WebSocket 端点 `RemoteBrowserWebSocketConfigurer`；所有 Bean 都是 `@ConditionalOnMissingBean`，可以直接覆盖。自动配置入口见 [`RemoteBrowserAutoConfiguration`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserAutoConfiguration.java) 与 [`RemoteBrowserWebSocketAutoConfiguration`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserWebSocketAutoConfiguration.java)。
 
 WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.remote.allowed-origin-patterns`。
 
@@ -60,7 +62,7 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 | `browser.remote.enabled` | `BROWSER_REMOTE_ENABLED` | `true` |
 | `browser.remote.mode` | `BROWSER_REMOTE_MODE` | `headed` |
 | `browser.remote.channel` | `BROWSER_REMOTE_CHANNEL` | `chrome` |
-| `browser.remote.profile-root` | `BROWSER_REMOTE_PROFILE_ROOT` | `~/.vaadin-remote-browser/profiles` |
+| `browser.remote.profile-root` | `BROWSER_REMOTE_PROFILE_ROOT` | `~/.vaadmin-remote-browser/profiles` |
 | `browser.remote.executable` | `BROWSER_REMOTE_EXECUTABLE` | 按通道自动定位 |
 | `browser.remote.websocket-path` | `BROWSER_REMOTE_WEBSOCKET_PATH` | `/browser-stream` |
 | `browser.remote.allowed-origin-patterns` | `BROWSER_REMOTE_ALLOWED_ORIGIN_PATTERNS` | 空（仅同源） |
@@ -96,18 +98,18 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 - `locale` 使用 BCP 47 标签，同时写入 Chrome 的 `--accept-lang` 与页面 locale 覆盖，保证 `navigator.language`、`navigator.languages` 与请求头一致。
 - `timezone` 使用 IANA 时区标识，`colorScheme` 为 `LIGHT`、`DARK` 或 `NO_PREFERENCE`。
 - `deviceScaleFactor` 范围为 `0.5` 至 `4.0`，通过 Chrome 的设备像素比启动参数应用。
-- `permissions` 使用 [`BrowserPermission.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserPermission.java) 中的枚举名，按 CDP 权限类型授权。
+- `permissions` 使用 [`BrowserPermission.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserPermission.java) 中的枚举名，按 CDP 权限类型授权。
 
 画像在 Profile 租约创建时读取，运行中不热更新；修改后新建会话生效。视口尺寸由页面 `viewport.resize` 流程管理，不写入画像。
 
 ## 反自动化检测不变量
 
-由 [`BrowserStealthTest.java`](src/test/java/dev/w0fv1/remotebrowser/BrowserStealthTest.java) 守护，改动时不要绕过：
+由 [`BrowserStealthTest.java`](src/test/java/dev/w0fv1/vaadmin/remotebrowser/BrowserStealthTest.java) 守护，改动时不要绕过：
 
 - 只启动本机安装的原生 Chrome/Edge，不引入 Playwright、Puppeteer、Selenium 等自动化启动器。
-- 启动参数只有 [`BrowserRuntime#arguments`](src/main/java/dev/w0fv1/remotebrowser/BrowserRuntime.java) 一个来源；其中不出现 `--enable-automation`，并用 `--disable-blink-features=AutomationControlled` 保持 `navigator.webdriver === false`。
+- 启动参数只有 [`BrowserRuntime#arguments`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserRuntime.java) 一个来源；其中不出现 `--enable-automation`，并用 `--disable-blink-features=AutomationControlled` 保持 `navigator.webdriver === false`。
 - 不开启 `Runtime.enable`、不使用 `Page.addScriptToEvaluateOnNewDocument`、不注入任何页面脚本；标签页地址与标题取自 `Target.getTargetInfo`。
-- 页面环境只用 Chrome 启动参数与 `Emulation` 域的浏览器原生覆盖实现，见 [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserPageEnvironment.java)，保持原型链与函数 `toString` 原样输出。
+- 页面环境只用 Chrome 启动参数与 `Emulation` 域的浏览器原生覆盖实现，见 [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserPageEnvironment.java)，保持原型链与函数 `toString` 原样输出。
 - 输入按真实鼠标、键盘语义下发：修饰键位掩码、点击计数、`code`/`keyCode`/`location`，不伪造事件时间戳。
 - 关闭浏览器先发 `Browser.close` 并等待进程自行退出，保证 profile 落盘。
 
@@ -115,20 +117,20 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 
 | 职责 | 入口 |
 | --- | --- |
-| 对外门面 | [`RemoteBrowser.java`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowser.java)、[`RemoteBrowserSession.java`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserSession.java) |
-| Vaadin 组件 | [`RemoteBrowserViewer.java`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserViewer.java)、[`BrowserStreamComponent.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserStreamComponent.java)、[`browser-stream.js`](src/main/resources/META-INF/frontend/browser-stream.js) |
-| 自动配置 | [`RemoteBrowserAutoConfiguration.java`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserAutoConfiguration.java)、[`RemoteBrowserWebSocketAutoConfiguration.java`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserWebSocketAutoConfiguration.java) |
-| 运行配置 | [`BrowserRuntimeProperties.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserRuntimeProperties.java) |
-| 浏览器进程与启动参数 | [`BrowserRuntime.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserRuntime.java)、[`ChromeProcess.java`](src/main/java/dev/w0fv1/remotebrowser/ChromeProcess.java)、[`ChromeBrowser.java`](src/main/java/dev/w0fv1/remotebrowser/ChromeBrowser.java) |
-| 可执行文件定位 | [`BrowserChannel.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserChannel.java) |
-| DevTools 协议传输 | [`CdpConnection.java`](src/main/java/dev/w0fv1/remotebrowser/CdpConnection.java)、[`CdpSession.java`](src/main/java/dev/w0fv1/remotebrowser/CdpSession.java) |
-| Profile 目录与租约 | [`BrowserProfileRegistry.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserProfileRegistry.java) |
-| 环境画像与校验 | [`BrowserEnvironmentProfile.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserEnvironmentProfile.java)、[`BrowserEnvironmentStore.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserEnvironmentStore.java) |
-| 页面环境覆盖 | [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserPageEnvironment.java) |
-| 会话、输入与失败状态 | [`BrowserSession.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserSession.java)、[`BrowserSessionManager.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserSessionManager.java) |
-| 输入协议 | [`BrowserInput.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserInput.java)、[`BrowserKeyInput.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserKeyInput.java) |
-| 标签页与采帧 | [`BrowserTab.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserTab.java)、[`BrowserViewport.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserViewport.java) |
-| WebSocket 协议与遥测 | [`BrowserStreamHandler.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserStreamHandler.java) |
+| 对外门面 | [`RemoteBrowser.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowser.java)、[`RemoteBrowserSession.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserSession.java) |
+| Vaadin 组件 | [`RemoteBrowserViewer.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserViewer.java)、[`BrowserStreamComponent.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserStreamComponent.java)、[`browser-stream.js`](src/main/resources/META-INF/frontend/browser-stream.js) |
+| 自动配置 | [`RemoteBrowserAutoConfiguration.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserAutoConfiguration.java)、[`RemoteBrowserWebSocketAutoConfiguration.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserWebSocketAutoConfiguration.java) |
+| 运行配置 | [`BrowserRuntimeProperties.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserRuntimeProperties.java) |
+| 浏览器进程与启动参数 | [`BrowserRuntime.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserRuntime.java)、[`ChromeProcess.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/ChromeProcess.java)、[`ChromeBrowser.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/ChromeBrowser.java) |
+| 可执行文件定位 | [`BrowserChannel.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserChannel.java) |
+| DevTools 协议传输 | [`CdpConnection.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/CdpConnection.java)、[`CdpSession.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/CdpSession.java) |
+| Profile 目录与租约 | [`BrowserProfileRegistry.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserProfileRegistry.java) |
+| 环境画像与校验 | [`BrowserEnvironmentProfile.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserEnvironmentProfile.java)、[`BrowserEnvironmentStore.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserEnvironmentStore.java) |
+| 页面环境覆盖 | [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserPageEnvironment.java) |
+| 会话、输入与失败状态 | [`BrowserSession.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserSession.java)、[`BrowserSessionManager.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserSessionManager.java) |
+| 输入协议 | [`BrowserInput.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserInput.java)、[`BrowserKeyInput.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserKeyInput.java) |
+| 标签页与采帧 | [`BrowserTab.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserTab.java)、[`BrowserViewport.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserViewport.java) |
+| WebSocket 协议与遥测 | [`BrowserStreamHandler.java`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/BrowserStreamHandler.java) |
 
 前端到服务端使用 `viewport.resize`、`tab.*`、`stream.configure`、指针消息（`move`/`down`/`up`/`cancel`/`context`/`wheel`）、键盘消息（`key`）与输入法提交（`text`）；服务端返回带 12 字节帧头的 JPEG 分片、会话状态和 `telemetry` 消息。
 
@@ -149,7 +151,7 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 .\gradlew.bat headedTest    # 需要图形桌面的有头模式测试
 ```
 
-[`BrowserSessionContractTest.java`](src/test/java/dev/w0fv1/remotebrowser/BrowserSessionContractTest.java) 使用本机真实 Chrome 与回环 HTTP 页面，在两种模式下执行同一组功能契约。
+[`BrowserSessionContractTest.java`](src/test/java/dev/w0fv1/vaadmin/remotebrowser/BrowserSessionContractTest.java) 使用本机真实 Chrome 与回环 HTTP 页面，在两种模式下执行同一组功能契约。
 
 ## 安全
 
