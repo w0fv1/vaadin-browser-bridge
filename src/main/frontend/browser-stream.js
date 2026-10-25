@@ -12,6 +12,8 @@ class BrowserStreamElement extends HTMLElement {
   #chunks = new Map()
   #drawing = false
   #latestFrameId = -1
+  #moveFrame = 0
+  #pendingMove = null
   #pointerSequence = 0
   #qualityTimer = null
   #focusAddressOnTabChange = false
@@ -28,6 +30,9 @@ class BrowserStreamElement extends HTMLElement {
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
     clearTimeout(this.#qualityTimer)
+    if (this.#moveFrame) cancelAnimationFrame(this.#moveFrame)
+    this.#moveFrame = 0
+    this.#pendingMove = null
     this.#socket?.close()
     this.#socket = null
   }
@@ -541,12 +546,15 @@ class BrowserStreamElement extends HTMLElement {
   }
 
   #pointerMove(event) {
-    const box = this.#canvas.getBoundingClientRect()
     const coalesced = event.getCoalescedEvents ? event.getCoalescedEvents() : []
-    const samples = coalesced.length ? coalesced : [event]
-    for (const sample of samples) {
-      this.#send(this.#pointerMessage('move', sample, this.#point(sample, box)))
-    }
+    this.#pendingMove = coalesced.length ? coalesced[coalesced.length - 1] : event
+    if (this.#moveFrame) return
+    this.#moveFrame = requestAnimationFrame(() => {
+      this.#moveFrame = 0
+      const sample = this.#pendingMove
+      this.#pendingMove = null
+      if (sample) this.#send(this.#pointerMessage('move', sample, this.#point(sample)))
+    })
   }
 
   #pointerUp(event) {
