@@ -13,9 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.IdentityHashMap;
@@ -62,42 +59,44 @@ public final class BrowserSessionManager {
     private static final double NAVIGATION_TIMEOUT_MILLIS = 10000;
     private static final String DEFAULT_PROFILE = "default";
 
-    private final Playwright playwright;
-    private final BrowserRuntimeConfiguration runtimeConfiguration;
+    private final BrowserRuntime runtime;
+    private final BrowserRuntimeProperties properties;
+    private final BrowserProfileRegistry profiles;
     private final String playwrightVersion;
     private final Map<String, BrowserSession> sessions = new ConcurrentHashMap<>();
 
-    public BrowserSessionManager() {
-        playwright = Playwright.create();
-        runtimeConfiguration = BrowserRuntimeConfiguration.fromSystem();
-        playwrightVersion = Optional.ofNullable(Playwright.class.getPackage().getImplementationVersion())
+    public BrowserSessionManager(BrowserRuntime runtime, BrowserRuntimeProperties properties) {
+        this.runtime = runtime;
+        this.properties = properties;
+        this.profiles = new BrowserProfileRegistry(properties.profileRoot());
+        this.playwrightVersion = Optional.ofNullable(Playwright.class.getPackage().getImplementationVersion())
                 .orElse("unknown");
     }
 
     public BrowserSession create(String url) {
-        Path profileDirectory = runtimeConfiguration.profileDirectory(DEFAULT_PROFILE);
-        try {
-            Files.createDirectories(profileDirectory);
-        } catch (IOException exception) {
-            throw new IllegalStateException("无法创建浏览器配置目录", exception);
-        }
+        return create(DEFAULT_PROFILE, url);
+    }
+
+    public BrowserSession create(String profileId, String url) {
+        BrowserProfileLease lease = profiles.acquire(profileId);
         BrowserContext context;
         try {
-            context = playwright.chromium().launchPersistentContext(
-                    profileDirectory, runtimeConfiguration.launchOptions());
+            context = runtime.launch(lease.directory());
         } catch (RuntimeException failure) {
-            throw new IllegalStateException("无法启动真实 Chrome，配置 " + DEFAULT_PROFILE + " 可能正在被占用", failure);
+            lease.close();
+            throw new IllegalStateException("无法启动真实 Chrome，配置 " + profileId, failure);
         }
         String browserVersion = Optional.ofNullable(context.browser())
                 .map(browser -> browser.version())
                 .orElse("unknown");
         BrowserSession session = new BrowserSession(
                 UUID.randomUUID().toString(),
-                DEFAULT_PROFILE,
                 context,
                 browserVersion,
                 playwrightVersion,
-                runtimeConfiguration);
+                properties.mode(),
+                properties.channel(),
+                lease);
         try {
             session.initialize(url);
         } catch (RuntimeException failure) {
@@ -123,7 +122,6 @@ public final class BrowserSessionManager {
     void shutdown() {
         sessions.values().forEach(BrowserSession::close);
         sessions.clear();
-        playwright.close();
     }
 
     public record TabState(String id, String title, String url, boolean loading, String error) {
@@ -171,7 +169,9 @@ public final class BrowserSessionManager {
         private final BrowserContext context;
         private final String browserVersion;
         private final String playwrightVersion;
-        private final BrowserRuntimeConfiguration runtimeConfiguration;
+        private final BrowserMode mode;
+        private final BrowserChannel channel;
+        private final BrowserProfileLease profileLease;
         private final ThreadPoolExecutor executor;
         private final Map<String, ManagedTab> tabs = new LinkedHashMap<>();
         private final Map<Page, ManagedTab> tabsByPage = new IdentityHashMap<>();
@@ -193,17 +193,20 @@ public final class BrowserSessionManager {
 
         BrowserSession(
                 String id,
-                String profileId,
                 BrowserContext context,
                 String browserVersion,
                 String playwrightVersion,
-                BrowserRuntimeConfiguration runtimeConfiguration) {
+                BrowserMode mode,
+                BrowserChannel channel,
+                BrowserProfileLease profileLease) {
             this.id = id;
-            this.profileId = profileId;
+            this.profileId = profileLease.profileId();
             this.context = context;
             this.browserVersion = browserVersion;
             this.playwrightVersion = playwrightVersion;
-            this.runtimeConfiguration = runtimeConfiguration;
+            this.mode = mode;
+            this.channel = channel;
+            this.profileLease = profileLease;
             this.executor = new ThreadPoolExecutor(
                     1,
                     1,
@@ -242,7 +245,7 @@ public final class BrowserSessionManager {
                 ManagedTab tab = register(firstPage);
                 activeTabId = tab.id;
                 tab.page.bringToFront();
-                tab.enforceWindowSize(viewportWidth, viewportHeight, runtimeConfiguration.headless());
+                tab.enforceWindowSize(viewportWidth, viewportHeight, mode.headless());
                 navigate(tab, target);
                 return null;
             });
@@ -267,7 +270,7 @@ public final class BrowserSessionManager {
                     .findFirst()
                     .orElse(null);
             return new BrowserInfo(
-                    runtimeConfiguration.channel().equals("msedge") ? "Microsoft Edge" : "Google Chrome",
+                    channel.displayName(),
                     browserVersion,
                     playwrightVersion,
                     profileId,
@@ -275,8 +278,8 @@ public final class BrowserSessionManager {
                     active == null ? "" : active.title(),
                     active == null ? "" : active.url(),
                     !executor.isShutdown(),
-                    runtimeConfiguration.headless(),
-                    runtimeConfiguration.channel(),
+                    mode.headless(),
+                    channel.playwrightName(),
                     new InputInfo(
                             lastReceivedInputSequence.get(),
                             lastAppliedInputSequence.get(),
@@ -294,7 +297,7 @@ public final class BrowserSessionManager {
                     ManagedTab tab = tabs.get(activeTabId);
                     if (tab == null) return null;
                     try {
-                        tab.enforceWindowSize(viewportWidth, viewportHeight, runtimeConfiguration.headless());
+                        tab.enforceWindowSize(viewportWidth, viewportHeight, mode.headless());
                         if (tab.refresh()) publish();
                         return tab.capture(quality);
                     } catch (RuntimeException failure) {
@@ -315,7 +318,7 @@ public final class BrowserSessionManager {
             String tabId = activeTabId;
             execute(() -> {
                 ManagedTab tab = tabs.get(tabId);
-                if (tab != null) tab.enforceWindowSize(viewportWidth, viewportHeight, runtimeConfiguration.headless());
+                if (tab != null) tab.enforceWindowSize(viewportWidth, viewportHeight, mode.headless());
             });
         }
 
@@ -329,7 +332,7 @@ public final class BrowserSessionManager {
                 if (tab == null) return;
                 activeTabId = tab.id;
                 tab.page.bringToFront();
-                tab.enforceWindowSize(viewportWidth, viewportHeight, runtimeConfiguration.headless());
+                tab.enforceWindowSize(viewportWidth, viewportHeight, mode.headless());
                 publish();
             });
         }
@@ -344,7 +347,7 @@ public final class BrowserSessionManager {
                     activeTabId = next == null ? null : next.id;
                     if (next != null) {
                         next.page.bringToFront();
-                        next.enforceWindowSize(viewportWidth, viewportHeight, runtimeConfiguration.headless());
+                        next.enforceWindowSize(viewportWidth, viewportHeight, mode.headless());
                     }
                 }
                 if (tab.id.equals(pressedTabId)) {
@@ -476,16 +479,18 @@ public final class BrowserSessionManager {
         }
 
         public void close() {
-            if (executor.isShutdown()) return;
             try {
-                submit(() -> {
-                    context.close();
-                    return null;
-                });
+                if (!executor.isShutdown()) {
+                    submit(() -> {
+                        context.close();
+                        return null;
+                    });
+                }
             } catch (IllegalStateException failure) {
                 log.debug("浏览器会话关闭时目标已不存在: {}", failure.getMessage());
             } finally {
                 executor.shutdownNow();
+                profileLease.close();
             }
         }
 
@@ -495,7 +500,7 @@ public final class BrowserSessionManager {
             if (tab == null) return;
             activeTabId = tab.id;
             tab.page.bringToFront();
-            tab.enforceWindowSize(viewportWidth, viewportHeight, runtimeConfiguration.headless());
+            tab.enforceWindowSize(viewportWidth, viewportHeight, mode.headless());
             publish();
             navigate(tab, url);
         }
@@ -535,7 +540,7 @@ public final class BrowserSessionManager {
                 activeTabId = next == null ? null : next.id;
                 if (next != null) {
                     next.page.bringToFront();
-                    next.enforceWindowSize(viewportWidth, viewportHeight, runtimeConfiguration.headless());
+                    next.enforceWindowSize(viewportWidth, viewportHeight, mode.headless());
                 }
             }
             if (tab.id.equals(pressedTabId)) {
