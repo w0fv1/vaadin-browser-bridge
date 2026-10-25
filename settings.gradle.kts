@@ -18,5 +18,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "vaadin-remote-browser"
+rootProject.name = "vaadmin-remote-browser"
 include(":sample")

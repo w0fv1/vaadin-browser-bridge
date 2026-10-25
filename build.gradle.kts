@@ -58,12 +58,12 @@ publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
-            artifactId = "vaadin-remote-browser"
+            artifactId = "vaadmin-remote-browser"
 
             pom {
-                name.set("Vaadin Remote Browser")
-                description.set("Embed a real hosted Chrome inside Vaadin applications over the DevTools protocol")
-                url.set("https://github.com/w0fv1/vaadin-remote-browser")
+                name.set("Vaadmin Remote Browser")
+                description.set("Vaadmin companion library: embed a real hosted Chrome inside Vaadin applications over the DevTools protocol")
+                url.set("https://github.com/w0fv1/vaadmin-remote-browser")
 
                 licenses {
                     license {
@@ -80,9 +80,9 @@ publishing {
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/w0fv1/vaadin-remote-browser.git")
-                    developerConnection.set("scm:git:ssh://github.com/w0fv1/vaadin-remote-browser.git")
-                    url.set("https://github.com/w0fv1/vaadin-remote-browser")
+                    connection.set("scm:git:git://github.com/w0fv1/vaadmin-remote-browser.git")
+                    developerConnection.set("scm:git:ssh://github.com/w0fv1/vaadmin-remote-browser.git")
+                    url.set("https://github.com/w0fv1/vaadmin-remote-browser")
                 }
             }
         }

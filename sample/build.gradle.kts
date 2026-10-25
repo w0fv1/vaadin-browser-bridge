@@ -17,7 +17,7 @@ vaadin {
 }
 
 springBoot {
-    mainClass.set("dev.w0fv1.remotebrowser.sample.RemoteBrowserSampleApplication")
+    mainClass.set("dev.w0fv1.vaadmin.remotebrowser.sample.RemoteBrowserSampleApplication")
 }
 
 dependencies {
