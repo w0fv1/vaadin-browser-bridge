@@ -67,6 +67,21 @@ final class BrowserRuntimeTest {
     }
 
     @Test
+    void keepsChromiumSandboxUnlessExplicitlyDisabled() {
+        assertThat(runtime(BrowserMode.HEADLESS).arguments(
+                        profileRoot.resolve("sandboxed"),
+                        BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT)))
+                .noneMatch(argument -> argument.equals("--no-sandbox"));
+
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
+                BrowserMode.HEADLESS, BrowserChannel.CHROME, profileRoot, null, true, false, null, null);
+        assertThat(new BrowserRuntime(properties, new ObjectMapper()).arguments(
+                        profileRoot.resolve("unsandboxed"),
+                        BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT)))
+                .contains("--no-sandbox");
+    }
+
+    @Test
     void resolvesConfiguredExecutable() {
         Path chrome = BrowserChannel.CHROME.executable();
         BrowserRuntimeProperties properties = new BrowserRuntimeProperties(

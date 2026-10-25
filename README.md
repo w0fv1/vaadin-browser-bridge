@@ -49,6 +49,13 @@ try (RemoteBrowserSession session = remoteBrowser.open(BrowserProfileId.DEFAULT,
 
 会话按 Profile 共享：同一 Profile 的多个 `open` 复用同一个浏览器进程，最后一个句柄关闭才退出。同一 Profile 同时只允许一个活动会话，避免多个 Chrome 争用同一目录。
 
+### 普通窗口与隐私窗口
+
+- `open(profileId, url)`：使用该 Profile 的持久化目录，Cookie、登录态、历史记录长期保留。
+- `openPrivate(templateProfile, url)`：以模板 Profile 的环境画像新建一次性目录（`<profile-root>/private/private-<uuid>`），每次打开都是全新状态；句柄关闭后目录连同全部状态删除。
+
+示例组件 `RemoteBrowserViewer` 提供「启动浏览器」与「隐私窗口」两个入口。
+
 ## Spring Boot Starter
 
 `browser.remote.enabled=true` 时自动注册 `RemoteBrowser`（含 `BrowserRuntime`、`BrowserEnvironmentStore`、`BrowserSessionManager`）与 WebSocket 端点 `RemoteBrowserWebSocketConfigurer`；所有 Bean 都是 `@ConditionalOnMissingBean`，可以直接覆盖。自动配置入口见 [`RemoteBrowserAutoConfiguration`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserAutoConfiguration.java) 与 [`RemoteBrowserWebSocketAutoConfiguration`](src/main/java/dev/w0fv1/vaadmin/remotebrowser/RemoteBrowserWebSocketAutoConfiguration.java)。
@@ -60,6 +67,7 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 | 配置 | 环境变量 | 默认值 |
 | --- | --- | --- |
 | `browser.remote.enabled` | `BROWSER_REMOTE_ENABLED` | `true` |
+| `browser.remote.sandbox` | `BROWSER_REMOTE_SANDBOX` | `true` |
 | `browser.remote.mode` | `BROWSER_REMOTE_MODE` | `headed` |
 | `browser.remote.channel` | `BROWSER_REMOTE_CHANNEL` | `chrome` |
 | `browser.remote.profile-root` | `BROWSER_REMOTE_PROFILE_ROOT` | `~/.vaadmin-remote-browser/profiles` |
@@ -68,6 +76,15 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 | `browser.remote.allowed-origin-patterns` | `BROWSER_REMOTE_ALLOWED_ORIGIN_PATTERNS` | 空（仅同源） |
 
 通道只接受 `chrome` 与 `msedge`，运行模式只接受 `headed` 与 `headless`。无头模式没有真实操作系统窗口，GPU、媒体解码、字体与窗口外观仍取决于运行环境；需要完整 headed 行为时应在隔离的虚拟显示环境运行 headed，而不是在 headless 上伪装。
+
+## Linux 与容器
+
+控制面只用 DevTools 协议，headed 模式的窗口操作走 `Browser` 域，因此在无图形界面的 Linux 上以 `headless` 运行即可，不需要 X11。部署时只需要满足：
+
+- 安装 Chrome/Chromium（自动定位 `/usr/bin/google-chrome`、`/usr/bin/chromium`、`/opt/google/chrome/chrome` 等；其它位置用 `browser.remote.executable` 指定）
+- 中文字体（如 `fonts-noto-cjk`）与常见运行库，否则页面文字与视频会缺字
+- 以 root 或容器内运行时 Chrome 会拒绝启动，此时显式设置 `browser.remote.sandbox=false`（等价 `--no-sandbox`，会削弱进程隔离，只在这种环境用）
+- 进程目录可写：`browser.remote.profile-root` 需要有足够空间放 Chrome 的用户数据与隐私窗口的一次性目录
 
 ## 浏览器环境画像
 

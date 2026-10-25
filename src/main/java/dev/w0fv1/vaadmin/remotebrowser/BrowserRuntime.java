@@ -56,6 +56,7 @@ final class BrowserRuntime {
                 "--window-size=" + BrowserSession.DEFAULT_VIEWPORT_WIDTH
                         + "," + BrowserSession.DEFAULT_VIEWPORT_HEIGHT));
         if (properties.mode().headless()) arguments.add("--headless=new");
+        if (!properties.sandbox()) arguments.add("--no-sandbox");
         if (environment.mode() == BrowserEnvironmentMode.MANAGED) {
             arguments.add("--accept-lang=" + acceptLanguage(environment.locale()));
             arguments.add("--force-device-scale-factor=" + environment.deviceScaleFactor());

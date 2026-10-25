@@ -44,7 +44,7 @@ final class BrowserRuntimePropertiesTest {
 
     private static BrowserRuntimeProperties properties(String websocketPath) {
         return new BrowserRuntimeProperties(
-                BrowserMode.HEADED, BrowserChannel.CHROME, null, null, true, websocketPath, null);
+                BrowserMode.HEADED, BrowserChannel.CHROME, null, null, true, true, websocketPath, null);
     }
 
     @Test

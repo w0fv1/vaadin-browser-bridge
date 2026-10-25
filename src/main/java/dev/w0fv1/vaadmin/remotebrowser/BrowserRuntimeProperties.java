@@ -14,6 +14,7 @@ public record BrowserRuntimeProperties(
         Path profileRoot,
         Path executable,
         Boolean enabled,
+        Boolean sandbox,
         String websocketPath,
         List<String> allowedOriginPatterns) {
     static final String DEFAULT_WEBSOCKET_PATH = "/browser-stream";
@@ -46,6 +47,9 @@ public record BrowserRuntimeProperties(
         if (enabled == null) {
             enabled = Boolean.TRUE;
         }
+        if (sandbox == null) {
+            sandbox = Boolean.TRUE;
+        }
         websocketPath = normalizePath(websocketPath);
         allowedOriginPatterns = allowedOriginPatterns == null ? List.of() : List.copyOf(allowedOriginPatterns);
     }
@@ -55,7 +59,7 @@ public record BrowserRuntimeProperties(
             BrowserChannel channel,
             Path profileRoot,
             Path executable) {
-        this(mode, channel, profileRoot, executable, null, null, null);
+        this(mode, channel, profileRoot, executable, null, null, null, null);
     }
 
     private static String normalizePath(String path) {
