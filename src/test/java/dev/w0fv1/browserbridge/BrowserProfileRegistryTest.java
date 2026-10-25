@@ -1,6 +1,5 @@
 package dev.w0fv1.browserbridge;
 
-import com.microsoft.playwright.options.ColorScheme;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
@@ -44,7 +43,7 @@ final class BrowserProfileRegistryTest {
                 new BrowserProfileId("managed"),
                 Locale.forLanguageTag("fr-CA"),
                 ZoneId.of("Asia/Tokyo"),
-                ColorScheme.DARK,
+                BrowserColorScheme.DARK,
                 1.5,
                 Set.of(BrowserPermission.GEOLOCATION));
         store.save(profile);
@@ -68,7 +67,7 @@ final class BrowserProfileRegistryTest {
 
     private BrowserEnvironmentStore store() {
         return new BrowserEnvironmentStore(
-                new BrowserRuntimeProperties(BrowserMode.HEADED, BrowserChannel.CHROME, root),
+                new BrowserRuntimeProperties(BrowserMode.HEADED, BrowserChannel.CHROME, root, null),
                 new ObjectMapper());
     }
 }

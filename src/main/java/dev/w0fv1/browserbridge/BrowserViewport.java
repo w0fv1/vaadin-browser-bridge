@@ -1,13 +1,16 @@
 package dev.w0fv1.browserbridge;
 
-import com.google.gson.JsonObject;
-import com.microsoft.playwright.CDPSession;
-import com.microsoft.playwright.Page;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 final class BrowserViewport {
     private final BrowserMode mode;
-    private final Page page;
-    private final CDPSession cdp;
+    private final String targetId;
+    private final CdpSession session;
+    private final CdpConnection connection;
+    private final ObjectMapper mapper;
+    private final double deviceScaleFactor;
     private int clientWidth;
     private int clientHeight;
     private int appliedWidth;
@@ -15,10 +18,19 @@ final class BrowserViewport {
     private int lockedOuterWidth;
     private int lockedOuterHeight;
 
-    BrowserViewport(BrowserMode mode, Page page, CDPSession cdp) {
+    BrowserViewport(
+            BrowserMode mode,
+            String targetId,
+            CdpSession session,
+            CdpConnection connection,
+            ObjectMapper mapper,
+            double deviceScaleFactor) {
         this.mode = mode;
-        this.page = page;
-        this.cdp = cdp;
+        this.targetId = targetId;
+        this.session = session;
+        this.connection = connection;
+        this.mapper = mapper;
+        this.deviceScaleFactor = deviceScaleFactor;
     }
 
     void resize(int targetWidth, int targetHeight) {
@@ -30,22 +42,23 @@ final class BrowserViewport {
     }
 
     double mapX(double x, int viewportWidth) {
-        if (viewportWidth <= 0 || clientWidth <= 0) {
-            return x;
-        }
+        if (viewportWidth <= 0 || clientWidth <= 0) return x;
         return x * clientWidth / viewportWidth;
     }
 
     double mapY(double y, int viewportHeight) {
-        if (viewportHeight <= 0 || clientHeight <= 0) {
-            return y;
-        }
+        if (viewportHeight <= 0 || clientHeight <= 0) return y;
         return y * clientHeight / viewportHeight;
     }
 
     private void resizeHeadless(int targetWidth, int targetHeight) {
         if (appliedWidth == targetWidth && appliedHeight == targetHeight) return;
-        page.setViewportSize(targetWidth, targetHeight);
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("width", targetWidth);
+        parameters.put("height", targetHeight);
+        parameters.put("deviceScaleFactor", deviceScaleFactor);
+        parameters.put("mobile", false);
+        session.call("Emulation.setDeviceMetricsOverride", parameters);
         readViewportMetrics();
         appliedWidth = targetWidth;
         appliedHeight = targetHeight;
@@ -53,15 +66,15 @@ final class BrowserViewport {
 
     private void resizeHeaded(int targetWidth, int targetHeight) {
         readViewportMetrics();
-        JsonObject window = cdp.send("Browser.getWindowForTarget");
-        int windowId = window.get("windowId").getAsInt();
-        JsonObject bounds = window.getAsJsonObject("bounds");
+        JsonNode window = connection.call("Browser.getWindowForTarget", windowParameters());
+        int windowId = window.get("windowId").asInt();
+        JsonNode bounds = window.path("bounds");
         String windowState = "normal";
-        if (bounds.has("windowState") && !bounds.get("windowState").isJsonNull()) {
-            windowState = bounds.get("windowState").getAsString();
+        if (bounds.has("windowState") && !bounds.get("windowState").isNull()) {
+            windowState = bounds.get("windowState").asString();
         }
-        int outerWidth = bounds.get("width").getAsInt();
-        int outerHeight = bounds.get("height").getAsInt();
+        int outerWidth = bounds.get("width").asInt();
+        int outerHeight = bounds.get("height").asInt();
         boolean viewportChanged = appliedWidth != targetWidth || appliedHeight != targetHeight;
         boolean windowDrifted = !"normal".equals(windowState)
                 || (lockedOuterWidth > 0 && Math.abs(outerWidth - lockedOuterWidth) > 2)
@@ -69,51 +82,43 @@ final class BrowserViewport {
         if (!viewportChanged && !windowDrifted) return;
 
         if (!"normal".equals(windowState)) {
-            JsonObject normalBounds = new JsonObject();
-            normalBounds.addProperty("windowState", "normal");
+            ObjectNode normalBounds = mapper.createObjectNode();
+            normalBounds.put("windowState", "normal");
             setWindowBounds(windowId, normalBounds);
-            bounds = cdp.send("Browser.getWindowForTarget").getAsJsonObject("bounds");
-            outerWidth = bounds.get("width").getAsInt();
-            outerHeight = bounds.get("height").getAsInt();
+            bounds = connection.call("Browser.getWindowForTarget", windowParameters()).path("bounds");
+            outerWidth = bounds.get("width").asInt();
+            outerHeight = bounds.get("height").asInt();
             readViewportMetrics();
         }
 
         int insetWidth = 16;
-        if (clientWidth > 0) {
-            insetWidth = Math.max(0, outerWidth - clientWidth);
-        }
+        if (clientWidth > 0) insetWidth = Math.max(0, outerWidth - clientWidth);
         int insetHeight = 88;
-        if (clientHeight > 0) {
-            insetHeight = Math.max(0, outerHeight - clientHeight);
-        }
-        JsonObject targetBounds = new JsonObject();
-        targetBounds.addProperty("windowState", "normal");
-        targetBounds.addProperty("width", targetWidth + insetWidth);
-        targetBounds.addProperty("height", targetHeight + insetHeight);
+        if (clientHeight > 0) insetHeight = Math.max(0, outerHeight - clientHeight);
+        ObjectNode targetBounds = mapper.createObjectNode();
+        targetBounds.put("windowState", "normal");
+        targetBounds.put("width", targetWidth + insetWidth);
+        targetBounds.put("height", targetHeight + insetHeight);
         setWindowBounds(windowId, targetBounds);
         readViewportMetrics();
         if (clientWidth != targetWidth || clientHeight != targetHeight) {
-            targetBounds.addProperty(
-                    "width",
-                    targetBounds.get("width").getAsInt() + targetWidth - clientWidth);
-            targetBounds.addProperty(
-                    "height",
-                    targetBounds.get("height").getAsInt() + targetHeight - clientHeight);
+            targetBounds.put("width", targetBounds.get("width").asInt() + targetWidth - clientWidth);
+            targetBounds.put("height", targetBounds.get("height").asInt() + targetHeight - clientHeight);
             setWindowBounds(windowId, targetBounds);
         }
 
-        JsonObject applied = cdp.send("Browser.getWindowForTarget").getAsJsonObject("bounds");
-        lockedOuterWidth = applied.get("width").getAsInt();
-        lockedOuterHeight = applied.get("height").getAsInt();
+        JsonNode applied = connection.call("Browser.getWindowForTarget", windowParameters()).path("bounds");
+        lockedOuterWidth = applied.get("width").asInt();
+        lockedOuterHeight = applied.get("height").asInt();
         appliedWidth = targetWidth;
         appliedHeight = targetHeight;
         readViewportMetrics();
     }
 
     private void readViewportMetrics() {
-        JsonObject cssViewport = cdp.send("Page.getLayoutMetrics").getAsJsonObject("cssVisualViewport");
-        int width = cssViewport.get("clientWidth").getAsInt();
-        int height = cssViewport.get("clientHeight").getAsInt();
+        JsonNode viewport = session.call("Page.getLayoutMetrics", null).path("cssVisualViewport");
+        int width = viewport.get("clientWidth").asInt();
+        int height = viewport.get("clientHeight").asInt();
         if (width <= 0 || height <= 0) {
             throw new IllegalStateException("浏览器视口尺寸无效");
         }
@@ -121,10 +126,16 @@ final class BrowserViewport {
         clientHeight = height;
     }
 
-    private void setWindowBounds(int windowId, JsonObject bounds) {
-        JsonObject parameters = new JsonObject();
-        parameters.addProperty("windowId", windowId);
-        parameters.add("bounds", bounds);
-        cdp.send("Browser.setWindowBounds", parameters);
+    private ObjectNode windowParameters() {
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("targetId", targetId);
+        return parameters;
+    }
+
+    private void setWindowBounds(int windowId, ObjectNode bounds) {
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("windowId", windowId);
+        parameters.set("bounds", bounds);
+        connection.call("Browser.setWindowBounds", parameters);
     }
 }

@@ -1,12 +1,12 @@
 package dev.w0fv1.browserbridge;
 
-import com.microsoft.playwright.BrowserType;
-import com.microsoft.playwright.options.ColorScheme;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.file.Path;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -17,64 +17,69 @@ final class BrowserRuntimeTest {
     Path profileRoot;
 
     @Test
-    void usesStandardChromeFlagsInHeadlessMode() {
-        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
-                BrowserMode.HEADLESS, BrowserChannel.CHROME, profileRoot);
-        BrowserEnvironmentProfile environment = BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT);
+    void launchesNativeChromeWithoutAutomationFlags() {
+        BrowserRuntime runtime = runtime(BrowserMode.HEADED);
+        Path directory = profileRoot.resolve("default");
 
-        try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
-            BrowserType.LaunchPersistentContextOptions options = runtime.launchOptions(environment);
+        List<String> arguments = runtime.arguments(
+                directory, BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT));
 
-            assertThat(options.headless).isTrue();
-            assertThat(options.channel).isEqualTo("chrome");
-            assertThat(options.chromiumSandbox).isTrue();
-            assertThat(options.ignoreDefaultArgs).isNull();
-            assertThat(options.args).containsExactly("--no-first-run", "--no-default-browser-check");
-            assertThat(options.viewportSize).isEmpty();
-            assertThat(options.locale).isNull();
-            assertThat(options.timezoneId).isNull();
-            assertThat(options.colorScheme).isNull();
-            assertThat(options.deviceScaleFactor).isNull();
-            assertThat(options.permissions).isNull();
-            runtime.close();
-            runtime.close();
-        }
+        assertThat(arguments).containsExactly(
+                "--user-data-dir=" + directory,
+                "--remote-debugging-port=0",
+                "--remote-allow-origins=*",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-background-timer-throttling",
+                "--disable-blink-features=AutomationControlled",
+                "--window-size=1280,720");
+        assertThat(arguments).noneMatch(argument -> argument.startsWith("--enable-automation"));
+        assertThat(arguments).noneMatch(argument -> argument.contains("no-sandbox"));
     }
 
     @Test
-    void mapsEdgeChannelToItsPlaywrightName() {
-        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
-                BrowserMode.HEADED, BrowserChannel.MSEDGE, profileRoot);
-        BrowserEnvironmentProfile environment = BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT);
+    void headlessModeAddsNativeHeadlessFlag() {
+        List<String> arguments = runtime(BrowserMode.HEADLESS).arguments(
+                profileRoot.resolve("headless"),
+                BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT));
 
-        try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
-            assertThat(runtime.launchOptions(environment).channel).isEqualTo("msedge");
-            assertThat(runtime.launchOptions(environment).headless).isFalse();
-        }
+        assertThat(arguments).contains("--headless=new");
+        assertThat(arguments).noneMatch(argument -> argument.startsWith("--accept-lang="));
     }
 
     @Test
-    void appliesManagedEnvironmentWithoutOverridingRealViewport() {
-        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
-                BrowserMode.HEADED, BrowserChannel.CHROME, profileRoot);
+    void managedEnvironmentDrivesLocaleAndScaleFactor() {
         BrowserEnvironmentProfile environment = BrowserEnvironmentProfile.managedProfile(
                 new BrowserProfileId("managed"),
                 Locale.forLanguageTag("fr-CA"),
                 ZoneId.of("America/Toronto"),
-                ColorScheme.DARK,
+                BrowserColorScheme.DARK,
                 1.25,
-                Set.of(BrowserPermission.GEOLOCATION, BrowserPermission.CLIPBOARD_READ));
+                Set.of(BrowserPermission.GEOLOCATION));
 
-        try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
-            BrowserType.LaunchPersistentContextOptions options = runtime.launchOptions(environment);
+        List<String> arguments = runtime(BrowserMode.HEADED).arguments(
+                profileRoot.resolve("managed"), environment);
 
-            assertThat(options.locale).isEqualTo("fr-CA");
-            assertThat(options.timezoneId).isEqualTo("America/Toronto");
-            assertThat(options.colorScheme).contains(ColorScheme.DARK);
-            assertThat(options.deviceScaleFactor).isNull();
-            assertThat(options.permissions).containsExactly("geolocation", "clipboard-read");
-            assertThat(options.args).contains("--force-device-scale-factor=1.25");
-            assertThat(options.viewportSize).isEmpty();
-        }
+        assertThat(arguments).contains("--accept-lang=fr-CA,fr", "--force-device-scale-factor=1.25");
+        assertThat(arguments).noneMatch(argument -> argument.startsWith("--enable-automation"));
+    }
+
+    @Test
+    void resolvesConfiguredExecutable() {
+        Path chrome = BrowserChannel.CHROME.executable();
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
+                BrowserMode.HEADED, BrowserChannel.MSEDGE, profileRoot, chrome);
+        BrowserRuntime runtime = new BrowserRuntime(properties, new ObjectMapper());
+
+        assertThat(runtime.executable()).isEqualTo(chrome);
+        assertThat(chrome).isRegularFile();
+    }
+
+    private BrowserRuntime runtime(BrowserMode mode) {
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
+                mode, BrowserChannel.CHROME, profileRoot, null);
+        return new BrowserRuntime(properties, new ObjectMapper());
     }
 }

@@ -1,7 +1,5 @@
 package dev.w0fv1.browserbridge;
 
-import com.microsoft.playwright.options.ColorScheme;
-
 import java.time.ZoneId;
 import java.util.Locale;
 import java.util.Objects;
@@ -12,7 +10,7 @@ public record BrowserEnvironmentProfile(
         BrowserEnvironmentMode mode,
         Locale locale,
         ZoneId timezone,
-        ColorScheme colorScheme,
+        BrowserColorScheme colorScheme,
         double deviceScaleFactor,
         Set<BrowserPermission> permissions) {
     private static final double MIN_DEVICE_SCALE_FACTOR = 0.5;
@@ -58,7 +56,7 @@ public record BrowserEnvironmentProfile(
             BrowserProfileId profileId,
             Locale locale,
             ZoneId timezone,
-            ColorScheme colorScheme,
+            BrowserColorScheme colorScheme,
             double deviceScaleFactor,
             Set<BrowserPermission> permissions) {
         return new BrowserEnvironmentProfile(

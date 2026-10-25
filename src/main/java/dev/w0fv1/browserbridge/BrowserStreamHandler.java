@@ -50,7 +50,8 @@ public final class BrowserStreamHandler extends AbstractWebSocketHandler {
                         input.path("y").asDouble(),
                         input.path("deltaX").asDouble(),
                         input.path("deltaY").asDouble());
-                case "key" -> browser.key(input.path("key").asString());
+                case "key" -> browser.key(BrowserKeyInput.parse(input));
+                case "text" -> browser.insertText(input.path("text").asString(""));
                 case "tab.open" -> browser.openTab(input.path("url").asString("about:blank"));
                 case "tab.activate" -> browser.activateTab(input.path("tabId").asString(""));
                 case "tab.close" -> browser.closeTab(input.path("tabId").asString(""));
