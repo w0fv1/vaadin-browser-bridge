@@ -19,6 +19,8 @@ public final class RemoteBrowserViewer extends VerticalLayout {
     private final BrowserStreamComponent stream = new BrowserStreamComponent();
     private String initialUrl = DEFAULT_URL;
     private RemoteBrowserSession session;
+    private BrowserProfileId activeProfile;
+    private boolean privateMode;
 
     public RemoteBrowserViewer(RemoteBrowser browser) {
         this.browser = browser;
@@ -67,7 +69,7 @@ public final class RemoteBrowserViewer extends VerticalLayout {
         close();
     }
 
-    private void open(boolean privateMode) {
+    private void open(boolean requestedPrivate) {
         close();
         BrowserProfileId profileId = profile.getValue();
         if (profileId == null) {
@@ -75,9 +77,11 @@ public final class RemoteBrowserViewer extends VerticalLayout {
             return;
         }
         try {
-            session = privateMode
+            session = requestedPrivate
                     ? browser.openPrivate(profileId, initialUrl)
                     : browser.open(profileId, initialUrl);
+            activeProfile = profileId;
+            privateMode = requestedPrivate;
             stream.setSessionId(session.sessionId());
             start.setText("重启浏览器");
             renderStatus();
@@ -91,7 +95,10 @@ public final class RemoteBrowserViewer extends VerticalLayout {
             status.setText("尚未创建会话，首个标签页地址 " + initialUrl);
             return;
         }
-        status.setText("会话 " + session.sessionId() + " 已就绪，配置 "
-                + session.profileId().value() + "，环境 " + session.environmentMode());
+        String source = privateMode
+                ? "隐私窗口，模板配置 " + activeProfile.value() + "，关闭后清空全部状态"
+                : "配置 " + activeProfile.value();
+        status.setText("会话 " + session.sessionId() + " 已就绪，" + source
+                + "，环境 " + session.environmentMode());
     }
 }
