@@ -22,7 +22,11 @@ record BrowserInput(
         long sequence = input.path("seq").asLong(-1);
         double x = input.path("x").asDouble(Double.NaN);
         double y = input.path("y").asDouble(Double.NaN);
-        int button = input.path("button").asInt(type.equals("move") ? -1 : 0);
+        int buttonFallback = 0;
+        if (type.equals("move")) {
+            buttonFallback = -1;
+        }
+        int button = input.path("button").asInt(buttonFallback);
         int buttons = input.path("buttons").asInt(0);
         int pointerId = input.path("pointerId").asInt(-1);
         long clientTimeMillis = input.path("clientTime").asLong(-1);

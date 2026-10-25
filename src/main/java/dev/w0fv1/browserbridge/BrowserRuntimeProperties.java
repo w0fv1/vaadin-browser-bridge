@@ -10,11 +10,18 @@ public record BrowserRuntimeProperties(
         BrowserChannel channel,
         Path profileRoot) {
     public BrowserRuntimeProperties {
-        mode = mode == null ? BrowserMode.HEADED : mode;
-        channel = channel == null ? BrowserChannel.CHROME : channel;
+        if (mode == null) {
+            mode = BrowserMode.HEADED;
+        }
+        if (channel == null) {
+            channel = BrowserChannel.CHROME;
+        }
         Path defaultProfileRoot = Path.of(
                 System.getProperty("user.home"), ".browser-bridge", "profiles");
-        Path configuredProfileRoot = profileRoot == null ? defaultProfileRoot : profileRoot;
+        Path configuredProfileRoot = defaultProfileRoot;
+        if (profileRoot != null) {
+            configuredProfileRoot = profileRoot;
+        }
         if (configuredProfileRoot.toString().isBlank()) {
             throw new IllegalArgumentException("浏览器配置目录不能为空");
         }

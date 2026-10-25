@@ -5,14 +5,11 @@ import com.microsoft.playwright.CDPSession;
 import com.microsoft.playwright.Page;
 
 final class BrowserViewport {
-    private static final int DEFAULT_WIDTH = 1280;
-    private static final int DEFAULT_HEIGHT = 720;
-
     private final BrowserMode mode;
     private final Page page;
     private final CDPSession cdp;
-    private int clientWidth = DEFAULT_WIDTH;
-    private int clientHeight = DEFAULT_HEIGHT;
+    private int clientWidth;
+    private int clientHeight;
     private int appliedWidth;
     private int appliedHeight;
     private int lockedOuterWidth;
@@ -33,11 +30,17 @@ final class BrowserViewport {
     }
 
     double mapX(double x, int viewportWidth) {
-        return viewportWidth <= 0 || clientWidth <= 0 ? x : x * clientWidth / viewportWidth;
+        if (viewportWidth <= 0 || clientWidth <= 0) {
+            return x;
+        }
+        return x * clientWidth / viewportWidth;
     }
 
     double mapY(double y, int viewportHeight) {
-        return viewportHeight <= 0 || clientHeight <= 0 ? y : y * clientHeight / viewportHeight;
+        if (viewportHeight <= 0 || clientHeight <= 0) {
+            return y;
+        }
+        return y * clientHeight / viewportHeight;
     }
 
     private void resizeHeadless(int targetWidth, int targetHeight) {
@@ -53,9 +56,10 @@ final class BrowserViewport {
         JsonObject window = cdp.send("Browser.getWindowForTarget");
         int windowId = window.get("windowId").getAsInt();
         JsonObject bounds = window.getAsJsonObject("bounds");
-        String windowState = bounds.has("windowState") && !bounds.get("windowState").isJsonNull()
-                ? bounds.get("windowState").getAsString()
-                : "normal";
+        String windowState = "normal";
+        if (bounds.has("windowState") && !bounds.get("windowState").isJsonNull()) {
+            windowState = bounds.get("windowState").getAsString();
+        }
         int outerWidth = bounds.get("width").getAsInt();
         int outerHeight = bounds.get("height").getAsInt();
         boolean viewportChanged = appliedWidth != targetWidth || appliedHeight != targetHeight;
@@ -74,8 +78,14 @@ final class BrowserViewport {
             readViewportMetrics();
         }
 
-        int insetWidth = clientWidth > 0 ? Math.max(0, outerWidth - clientWidth) : 16;
-        int insetHeight = clientHeight > 0 ? Math.max(0, outerHeight - clientHeight) : 88;
+        int insetWidth = 16;
+        if (clientWidth > 0) {
+            insetWidth = Math.max(0, outerWidth - clientWidth);
+        }
+        int insetHeight = 88;
+        if (clientHeight > 0) {
+            insetHeight = Math.max(0, outerHeight - clientHeight);
+        }
         JsonObject targetBounds = new JsonObject();
         targetBounds.addProperty("windowState", "normal");
         targetBounds.addProperty("width", targetWidth + insetWidth);

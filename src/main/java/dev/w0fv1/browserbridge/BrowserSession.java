@@ -159,14 +159,20 @@ public final class BrowserSession {
                 .filter(tab -> tab.id().equals(state.activeTabId()))
                 .findFirst()
                 .orElse(null);
+        String activeTitle = "";
+        String activeUrl = "";
+        if (active != null) {
+            activeTitle = active.title();
+            activeUrl = active.url();
+        }
         return new BrowserInfo(
                 channel.displayName(),
                 browserVersion,
                 playwrightVersion,
                 profileId,
                 state.tabs().size(),
-                active == null ? "" : active.title(),
-                active == null ? "" : active.url(),
+                activeTitle,
+                activeUrl,
                 !executor.isShutdown(),
                 mode.headless(),
                 channel.playwrightName(),
@@ -232,8 +238,9 @@ public final class BrowserSession {
             tabsByPage.remove(tab.page());
             if (tab.id().equals(activeTabId)) {
                 BrowserTab next = tabs.values().stream().findFirst().orElse(null);
-                activeTabId = next == null ? null : next.id();
+                activeTabId = null;
                 if (next != null) {
+                    activeTabId = next.id();
                     next.page().bringToFront();
                     next.resize(viewportWidth, viewportHeight);
                 }
@@ -374,7 +381,7 @@ public final class BrowserSession {
                     return null;
                 });
             }
-        } catch (IllegalStateException failure) {
+        } catch (RuntimeException failure) {
             log.debug("浏览器会话关闭时目标已不存在: {}", failure.getMessage());
         } finally {
             executor.shutdownNow();
@@ -428,8 +435,9 @@ public final class BrowserSession {
         tabs.remove(tab.id());
         if (tab.id().equals(activeTabId)) {
             BrowserTab next = tabs.values().stream().findFirst().orElse(null);
-            activeTabId = next == null ? null : next.id();
+            activeTabId = null;
             if (next != null) {
+                activeTabId = next.id();
                 next.page().bringToFront();
                 next.resize(viewportWidth, viewportHeight);
             }
@@ -454,7 +462,10 @@ public final class BrowserSession {
             tab.refresh();
             publish();
         } catch (RuntimeException failure) {
-            String message = failure.getMessage() == null ? "导航失败" : failure.getMessage();
+            String message = "导航失败";
+            if (failure.getMessage() != null) {
+                message = failure.getMessage();
+            }
             tab.markNavigationFailure(message);
             publish();
             log.warn("远端页面导航失败 {}: {}", url, message);
@@ -536,13 +547,19 @@ public final class BrowserSession {
     }
 
     private void recordFailure(String operation, Throwable failure) {
-        String message = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+        String message = failure.getClass().getSimpleName();
+        if (failure.getMessage() != null) {
+            message = failure.getMessage();
+        }
         lastFailure.set(new BrowserFailure(operation, message, System.currentTimeMillis()));
         log.warn("浏览器{}操作失败: {}", operation, message);
     }
 
     private static String normalizeUrl(String url) {
-        String value = url == null ? "" : url.trim();
+        String value = "";
+        if (url != null) {
+            value = url.trim();
+        }
         if (value.isEmpty()) return "about:blank";
         if (value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*$")) return value;
         return "https://" + value;
