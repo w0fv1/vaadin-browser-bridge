@@ -1,4 +1,4 @@
-# Vaadin Browser Bridge
+# Vaadin Remote Browser
 
 把本机真实 Chrome 嵌入 Vaadin 网页：服务端维持一个持久化 Chrome 会话，浏览器端通过 WebSocket 接收实时画面并转发鼠标、键盘、滚轮与标签页操作。
 
@@ -21,11 +21,11 @@
 
 ## 反自动化检测约束
 
-以下不变量由 [`BrowserStealthTest.java`](src/test/java/dev/w0fv1/browserbridge/BrowserStealthTest.java) 守护，改动时不要绕过：
+以下不变量由 [`BrowserStealthTest.java`](src/test/java/dev/w0fv1/remotebrowser/BrowserStealthTest.java) 守护，改动时不要绕过：
 
-- 启动参数只有 [`BrowserRuntime#arguments`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntime.java) 一个来源；其中不出现 `--enable-automation`，并用 `--disable-blink-features=AutomationControlled` 保持 `navigator.webdriver === false`。
+- 启动参数只有 [`BrowserRuntime#arguments`](src/main/java/dev/w0fv1/remotebrowser/BrowserRuntime.java) 一个来源；其中不出现 `--enable-automation`，并用 `--disable-blink-features=AutomationControlled` 保持 `navigator.webdriver === false`。
 - 不开启 `Runtime.enable`，不使用 `Page.addScriptToEvaluateOnNewDocument`，不注入任何页面脚本；标签页地址与标题取自 `Target.getTargetInfo`。
-- 页面环境只用 Chrome 启动参数与 `Emulation` 域的浏览器原生覆盖实现，见 [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPageEnvironment.java)。
+- 页面环境只用 Chrome 启动参数与 `Emulation` 域的浏览器原生覆盖实现，见 [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserPageEnvironment.java)。
 - 输入按真实鼠标、键盘语义下发：携带修饰键位掩码与点击计数，键位带 `code`、`keyCode`、`location`，不伪造事件时间戳。
 - 关闭浏览器先发 `Browser.close` 并等待进程自行退出，保证 profile 落盘。
 
@@ -45,7 +45,7 @@
 无桌面环境使用标准 headless：
 
 ```powershell
-$env:BROWSER_BRIDGE_MODE = 'headless'
+$env:BROWSER_REMOTE_MODE = 'headless'
 .\gradlew.bat bootRun
 ```
 
@@ -63,16 +63,16 @@ http://localhost:8080/?url=https://example.com/
 .\gradlew.bat headedTest
 ```
 
-`test` 运行 headless 契约；`headedTest` 运行需要图形桌面的真实 headed Chrome 契约。[`BrowserSessionContractTest.java`](src/test/java/dev/w0fv1/browserbridge/BrowserSessionContractTest.java) 使用本机真实 Chrome 和回环 HTTP 页面，在两种模式下执行同一组功能契约。
+`test` 运行 headless 契约；`headedTest` 运行需要图形桌面的真实 headed Chrome 契约。[`BrowserSessionContractTest.java`](src/test/java/dev/w0fv1/remotebrowser/BrowserSessionContractTest.java) 使用本机真实 Chrome 和回环 HTTP 页面，在两种模式下执行同一组功能契约。
 
 ## 配置
 
 | 配置 | 系统属性 | 环境变量 | 默认值 |
 | --- | --- | --- | --- |
-| 运行模式 | `browser.bridge.mode` | `BROWSER_BRIDGE_MODE` | `headed` |
-| 浏览器通道 | `browser.bridge.channel` | `BROWSER_BRIDGE_CHANNEL` | `chrome` |
-| 配置根目录 | `browser.bridge.profile-root` | `BROWSER_BRIDGE_PROFILE_ROOT` | `~/.browser-bridge/profiles` |
-| 可执行文件 | `browser.bridge.executable` | `BROWSER_BRIDGE_EXECUTABLE` | 按通道自动定位 |
+| 运行模式 | `browser.remote.mode` | `BROWSER_REMOTE_MODE` | `headed` |
+| 浏览器通道 | `browser.remote.channel` | `BROWSER_REMOTE_CHANNEL` | `chrome` |
+| 配置根目录 | `browser.remote.profile-root` | `BROWSER_REMOTE_PROFILE_ROOT` | `~/.vaadin-remote-browser/profiles` |
+| 可执行文件 | `browser.remote.executable` | `BROWSER_REMOTE_EXECUTABLE` | 按通道自动定位 |
 
 通道只接受 `chrome` 与 `msedge`，运行模式只接受 `headed` 与 `headless`。两种模式都使用本机安装的 Chrome/Edge；无头模式的 Chrome 版本、profile 和内容区尺寸由同一套配置控制。
 
@@ -83,7 +83,7 @@ http://localhost:8080/?url=https://example.com/
 每个 Profile 的 Chrome 数据目录可以直接放置 `environment.json`：
 
 ```text
-~/.browser-bridge/profiles/<profile-id>/
+~/.vaadin-remote-browser/profiles/<profile-id>/
 ├── environment.json
 └── Chrome 配置、Cookie 与本地存储
 ```
@@ -107,7 +107,7 @@ http://localhost:8080/?url=https://example.com/
 - `locale` 使用 BCP 47 标签，同时写入 Chrome 的 `--accept-lang` 与页面 locale 覆盖，保证 `navigator.language`、`navigator.languages` 与请求头一致。
 - `timezone` 使用 IANA 时区标识，`colorScheme` 为 `LIGHT`、`DARK` 或 `NO_PREFERENCE`。
 - `deviceScaleFactor` 范围为 `0.5` 至 `4.0`，通过 Chrome 的设备像素比启动参数应用。
-- `permissions` 使用 [`BrowserPermission.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPermission.java) 中的枚举名，按 CDP 权限类型授权。
+- `permissions` 使用 [`BrowserPermission.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserPermission.java) 中的枚举名，按 CDP 权限类型授权。
 
 画像在 Profile 租约创建时读取，运行中不会热更新；修改后新建会话生效。同一 Profile 同时只允许一个活动会话。视口尺寸仍由页面 `viewport.resize` 流程管理，不写入画像。
 
@@ -117,22 +117,22 @@ http://localhost:8080/?url=https://example.com/
 
 | 职责 | 入口 |
 | --- | --- |
-| 运行配置 | [`BrowserRuntimeProperties.java`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntimeProperties.java) |
-| 浏览器进程与启动参数 | [`BrowserRuntime.java`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntime.java)、[`ChromeProcess.java`](src/main/java/dev/w0fv1/browserbridge/ChromeProcess.java)、[`ChromeBrowser.java`](src/main/java/dev/w0fv1/browserbridge/ChromeBrowser.java) |
-| 可执行文件定位 | [`BrowserChannel.java`](src/main/java/dev/w0fv1/browserbridge/BrowserChannel.java) |
-| DevTools 协议传输 | [`CdpConnection.java`](src/main/java/dev/w0fv1/browserbridge/CdpConnection.java)、[`CdpSession.java`](src/main/java/dev/w0fv1/browserbridge/CdpSession.java) |
-| Profile 目录与租约 | [`BrowserProfileRegistry.java`](src/main/java/dev/w0fv1/browserbridge/BrowserProfileRegistry.java) |
-| 环境画像与校验 | [`BrowserEnvironmentProfile.java`](src/main/java/dev/w0fv1/browserbridge/BrowserEnvironmentProfile.java) |
-| 页面环境覆盖 | [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPageEnvironment.java) |
-| 画像文件存储 | [`BrowserEnvironmentStore.java`](src/main/java/dev/w0fv1/browserbridge/BrowserEnvironmentStore.java) |
-| 会话、输入与失败状态 | [`BrowserSession.java`](src/main/java/dev/w0fv1/browserbridge/BrowserSession.java) |
-| 输入协议 | [`BrowserInput.java`](src/main/java/dev/w0fv1/browserbridge/BrowserInput.java)、[`BrowserKeyInput.java`](src/main/java/dev/w0fv1/browserbridge/BrowserKeyInput.java) |
-| 标签页与采帧 | [`BrowserTab.java`](src/main/java/dev/w0fv1/browserbridge/BrowserTab.java) |
-| Headed/headless 视口语义 | [`BrowserViewport.java`](src/main/java/dev/w0fv1/browserbridge/BrowserViewport.java) |
-| 会话注册 | [`BrowserSessionManager.java`](src/main/java/dev/w0fv1/browserbridge/BrowserSessionManager.java) |
-| WebSocket 协议与遥测 | [`BrowserStreamHandler.java`](src/main/java/dev/w0fv1/browserbridge/BrowserStreamHandler.java) |
+| 运行配置 | [`BrowserRuntimeProperties.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserRuntimeProperties.java) |
+| 浏览器进程与启动参数 | [`BrowserRuntime.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserRuntime.java)、[`ChromeProcess.java`](src/main/java/dev/w0fv1/remotebrowser/ChromeProcess.java)、[`ChromeBrowser.java`](src/main/java/dev/w0fv1/remotebrowser/ChromeBrowser.java) |
+| 可执行文件定位 | [`BrowserChannel.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserChannel.java) |
+| DevTools 协议传输 | [`CdpConnection.java`](src/main/java/dev/w0fv1/remotebrowser/CdpConnection.java)、[`CdpSession.java`](src/main/java/dev/w0fv1/remotebrowser/CdpSession.java) |
+| Profile 目录与租约 | [`BrowserProfileRegistry.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserProfileRegistry.java) |
+| 环境画像与校验 | [`BrowserEnvironmentProfile.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserEnvironmentProfile.java) |
+| 页面环境覆盖 | [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserPageEnvironment.java) |
+| 画像文件存储 | [`BrowserEnvironmentStore.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserEnvironmentStore.java) |
+| 会话、输入与失败状态 | [`BrowserSession.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserSession.java) |
+| 输入协议 | [`BrowserInput.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserInput.java)、[`BrowserKeyInput.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserKeyInput.java) |
+| 标签页与采帧 | [`BrowserTab.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserTab.java) |
+| Headed/headless 视口语义 | [`BrowserViewport.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserViewport.java) |
+| 会话注册 | [`BrowserSessionManager.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserSessionManager.java) |
+| WebSocket 协议与遥测 | [`BrowserStreamHandler.java`](src/main/java/dev/w0fv1/remotebrowser/BrowserStreamHandler.java) |
 | 前端画面与输入 | [`browser-stream.js`](src/main/frontend/browser-stream.js) |
-| Vaadin 页面 | [`BrowserBridgeView.java`](src/main/java/dev/w0fv1/browserbridge/BrowserBridgeView.java) |
+| Vaadin 页面 | [`RemoteBrowserView.java`](src/main/java/dev/w0fv1/remotebrowser/RemoteBrowserView.java) |
 
 前端到服务端使用 `viewport.resize`、`tab.*`、`stream.configure`、指针消息（`move`/`down`/`up`/`cancel`/`context`/`wheel`）、键盘消息（`key`）与输入法提交（`text`）；服务端返回带 12 字节帧头的 JPEG 分片、会话状态和 `telemetry` 消息。
 
