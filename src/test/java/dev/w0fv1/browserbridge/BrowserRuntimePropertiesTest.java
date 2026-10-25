@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 final class BrowserRuntimePropertiesTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
@@ -56,6 +57,13 @@ final class BrowserRuntimePropertiesTest {
         contextRunner
                 .withPropertyValues("browser.bridge.channel=chromium")
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void rejectsBlankProfileRoot() {
+        assertThatThrownBy(() -> new BrowserRuntimeProperties(
+                BrowserMode.HEADED, BrowserChannel.CHROME, Path.of("")))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Configuration(proxyBeanMethods = false)

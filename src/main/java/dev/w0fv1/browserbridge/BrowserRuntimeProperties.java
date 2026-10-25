@@ -14,8 +14,10 @@ public record BrowserRuntimeProperties(
         channel = channel == null ? BrowserChannel.CHROME : channel;
         Path defaultProfileRoot = Path.of(
                 System.getProperty("user.home"), ".browser-bridge", "profiles");
-        profileRoot = (profileRoot == null ? defaultProfileRoot : profileRoot)
-                .toAbsolutePath()
-                .normalize();
+        Path configuredProfileRoot = profileRoot == null ? defaultProfileRoot : profileRoot;
+        if (configuredProfileRoot.toString().isBlank()) {
+            throw new IllegalArgumentException("浏览器配置目录不能为空");
+        }
+        profileRoot = configuredProfileRoot.toAbsolutePath().normalize();
     }
 }
