@@ -19,7 +19,7 @@ public final class BrowserBridgeView extends VerticalLayout implements BeforeEnt
     private final BrowserStreamComponent stream = new BrowserStreamComponent();
     private final Div status = new Div();
     private String targetUrl = DEFAULT_URL;
-    private BrowserSessionManager.BrowserSession session;
+    private BrowserSession session;
 
     public BrowserBridgeView(BrowserSessionManager sessions) {
         this.sessions = sessions;

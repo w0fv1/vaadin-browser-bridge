@@ -52,7 +52,7 @@ final class BrowserSessionContractTest {
         try (BrowserRuntime runtime = new BrowserRuntime(properties)) {
             BrowserSessionManager manager = new BrowserSessionManager(runtime, properties);
             try {
-                BrowserSessionManager.BrowserSession session = manager.create(profileId, baseUrl);
+                BrowserSession session = manager.create(profileId, baseUrl);
                 session.resizeViewport(1000, 600);
                 awaitTitle(session, "state:1000x600:none");
 
@@ -68,27 +68,28 @@ final class BrowserSessionContractTest {
                 session.openTab(baseUrl + "/second");
                 await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
                     session.capture();
-                    BrowserSessionManager.TabsState state = session.state();
+                    BrowserSession.TabsState state = session.state();
                     assertThat(state.tabs()).hasSize(2);
                     assertThat(state.tabs().get(1).url()).endsWith("/second");
                     assertThat(state.activeTabId()).isEqualTo(state.tabs().get(1).id());
                 });
 
-                BrowserSessionManager.TabsState state = session.state();
+                BrowserSession.TabsState state = session.state();
                 session.closeTab(state.activeTabId());
                 await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
                     session.capture();
                     assertThat(session.state().tabs()).hasSize(1);
                 });
 
-                BrowserSessionManager.BrowserInfo info = session.browserInfo();
+                BrowserSession.BrowserInfo info = session.browserInfo();
                 assertThat(info.profileId()).isEqualTo(profileId);
                 assertThat(info.headless()).isEqualTo(mode.headless());
                 assertThat(info.channel()).isEqualTo("chrome");
                 assertThat(info.browserVersion()).isNotBlank();
+                assertThat(info.lastFailure()).isNull();
 
                 manager.close(session.id());
-                AtomicReference<BrowserSessionManager.BrowserSession> reopened = new AtomicReference<>();
+                AtomicReference<BrowserSession> reopened = new AtomicReference<>();
                 await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
                     if (reopened.get() == null) {
                         reopened.set(manager.create(profileId, baseUrl));
@@ -106,14 +107,14 @@ final class BrowserSessionContractTest {
         }
     }
 
-    private void awaitTitle(BrowserSessionManager.BrowserSession session, String expected) {
+    private void awaitTitle(BrowserSession session, String expected) {
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
             assertThat(session.capture()).isNotNull();
             assertThat(session.browserInfo().activeTitle()).isEqualTo(expected);
         });
     }
 
-    private byte[] awaitFrame(BrowserSessionManager.BrowserSession session) {
+    private byte[] awaitFrame(BrowserSession session) {
         AtomicReference<byte[]> frame = new AtomicReference<>();
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
             frame.set(session.capture());
