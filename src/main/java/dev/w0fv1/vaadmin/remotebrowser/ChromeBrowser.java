@@ -49,8 +49,7 @@ final class ChromeBrowser implements AutoCloseable {
             connection.send("Browser.close", null);
         } catch (RuntimeException ignored) {
         }
-        process.awaitExit(GRACEFUL_EXIT);
-        process.close();
+        process.shutdown(GRACEFUL_EXIT);
         connection.close();
     }
 }

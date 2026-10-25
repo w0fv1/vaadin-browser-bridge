@@ -38,7 +38,7 @@ final class DirectoryTree {
                 }
             });
         } catch (IOException failure) {
-            log.warn("无法遍历目录 {}: {}", root, failure.getMessage());
+            log.warn("无法遍历目录 {}", root, failure);
         }
     }
 
@@ -46,7 +46,7 @@ final class DirectoryTree {
         try {
             Files.deleteIfExists(path);
         } catch (IOException failure) {
-            log.warn("无法删除 {}: {}", path, failure.getMessage());
+            log.warn("无法删除 {}", path, failure);
         }
     }
 }
