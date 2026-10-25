@@ -91,8 +91,31 @@ final class BrowserSessionManager implements RemoteBrowser {
         return session;
     }
 
+    @Override
+    public synchronized RemoteBrowserSession openPrivate(BrowserProfileId templateProfile, String url) {
+        BrowserEnvironmentProfile template = environments.read(templateProfile);
+        BrowserProfileLease lease = profiles.acquirePrivate(template);
+        BrowserSession session;
+        try {
+            session = createSession(lease, url);
+        } catch (RuntimeException failure) {
+            lease.close();
+            throw failure;
+        }
+        sessions.put(session.id(), session);
+        return new RemoteBrowserSession(session, () -> closePrivate(session));
+    }
+
+    private void closePrivate(BrowserSession session) {
+        sessions.remove(session.id());
+        session.close();
+    }
+
     private BrowserSession createSession(String profileId, String url) {
-        BrowserProfileLease lease = profiles.acquire(profileId);
+        return createSession(profiles.acquire(profileId), url);
+    }
+
+    private BrowserSession createSession(BrowserProfileLease lease, String url) {
         ChromeBrowser browser = null;
         BrowserSession session = null;
         try {
@@ -123,7 +146,7 @@ final class BrowserSessionManager implements RemoteBrowser {
             if (browser == null) {
                 message = "无法启动真实 Chrome";
             }
-            throw new IllegalStateException(message + "，配置 " + profileId, failure);
+            throw new IllegalStateException(message + "，配置 " + lease.profileId(), failure);
         }
     }
 
@@ -148,9 +171,9 @@ final class BrowserSessionManager implements RemoteBrowser {
     void shutdown() {
         List<BrowserSession> closing;
         synchronized (this) {
-            closing = new ArrayList<>(sharedSessions.size());
-            for (SharedSession shared : sharedSessions.values()) {
-                closing.add(shared.session);
+            closing = new ArrayList<>(sessions.size());
+            for (BrowserSession session : sessions.values()) {
+                closing.add(session);
             }
             sharedSessions.clear();
             sessions.clear();

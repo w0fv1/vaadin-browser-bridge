@@ -3,6 +3,7 @@ package dev.w0fv1.vaadmin.remotebrowser;
 import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.select.Select;
 
@@ -11,7 +12,9 @@ public final class RemoteBrowserViewer extends VerticalLayout {
 
     private final RemoteBrowser browser;
     private final Select<BrowserProfileId> profile = new Select<>("浏览器配置");
-    private final Button start = new Button("启动浏览器", event -> open());
+    private final Button start = new Button("启动浏览器", event -> open(false));
+    private final Button privateWindow = new Button("隐私窗口", event -> open(true));
+    private final Button stop = new Button("关闭会话", event -> close());
     private final Div status = new Div();
     private final BrowserStreamComponent stream = new BrowserStreamComponent();
     private String initialUrl = DEFAULT_URL;
@@ -25,7 +28,9 @@ public final class RemoteBrowserViewer extends VerticalLayout {
         stream.setStreamPath(browser.streamPath());
         setSizeFull();
         setSpacing(true);
-        add(profile, start, status, stream);
+        HorizontalLayout actions = new HorizontalLayout(start, privateWindow, stop);
+        actions.setPadding(false);
+        add(profile, actions, status, stream);
         expand(stream);
         renderStatus();
     }
@@ -40,20 +45,11 @@ public final class RemoteBrowserViewer extends VerticalLayout {
     }
 
     public void open() {
-        close();
-        BrowserProfileId profileId = profile.getValue();
-        if (profileId == null) {
-            status.setText("请选择浏览器配置");
-            return;
-        }
-        try {
-            session = browser.open(profileId, initialUrl);
-            stream.setSessionId(session.sessionId());
-            start.setText("重启浏览器");
-            renderStatus();
-        } catch (RuntimeException failure) {
-            status.setText("创建会话失败：" + failure.getMessage());
-        }
+        open(false);
+    }
+
+    public void openPrivate() {
+        open(true);
     }
 
     public void close() {
@@ -71,10 +67,31 @@ public final class RemoteBrowserViewer extends VerticalLayout {
         close();
     }
 
+    private void open(boolean privateMode) {
+        close();
+        BrowserProfileId profileId = profile.getValue();
+        if (profileId == null) {
+            status.setText("请选择浏览器配置");
+            return;
+        }
+        try {
+            session = privateMode
+                    ? browser.openPrivate(profileId, initialUrl)
+                    : browser.open(profileId, initialUrl);
+            stream.setSessionId(session.sessionId());
+            start.setText("重启浏览器");
+            renderStatus();
+        } catch (RuntimeException failure) {
+            status.setText("创建会话失败：" + failure.getMessage());
+        }
+    }
+
     private void renderStatus() {
-        status.setText(session == null
-                ? "尚未创建会话，首个标签页地址 " + initialUrl
-                : "会话 " + session.sessionId() + " 已就绪，配置 "
-                        + session.profileId().value() + "，环境 " + session.environmentMode());
+        if (session == null) {
+            status.setText("尚未创建会话，首个标签页地址 " + initialUrl);
+            return;
+        }
+        status.setText("会话 " + session.sessionId() + " 已就绪，配置 "
+                + session.profileId().value() + "，环境 " + session.environmentMode());
     }
 }

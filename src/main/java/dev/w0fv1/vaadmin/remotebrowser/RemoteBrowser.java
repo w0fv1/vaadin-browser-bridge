@@ -11,6 +11,8 @@ public interface RemoteBrowser {
 
     RemoteBrowserSession open(BrowserProfileId profileId, String url);
 
+    RemoteBrowserSession openPrivate(BrowserProfileId templateProfile, String url);
+
     boolean isOpen(BrowserProfileId profileId);
 
     String streamPath();
