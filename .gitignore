@@ -20,5 +20,5 @@ vite.generated.ts
 Thumbs.db
 
 .attachments/
-playwright-report/
 test-results/
+.playwright-cli/

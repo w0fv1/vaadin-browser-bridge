@@ -19,7 +19,6 @@ dependencies {
     implementation("com.vaadin:vaadin-spring-boot-starter")
     developmentOnly(platform("com.vaadin:vaadin-bom:25.3.2"))
     developmentOnly("com.vaadin:vaadin-dev")
-    implementation("com.microsoft.playwright:playwright:1.61.0")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.awaitility:awaitility")
 }

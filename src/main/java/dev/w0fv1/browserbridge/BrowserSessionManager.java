@@ -1,16 +1,14 @@
 package dev.w0fv1.browserbridge;
 
-import com.microsoft.playwright.BrowserContext;
-import com.microsoft.playwright.Playwright;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,19 +20,19 @@ public final class BrowserSessionManager {
     private final BrowserRuntime runtime;
     private final BrowserRuntimeProperties properties;
     private final BrowserProfileRegistry profiles;
-    private final String playwrightVersion;
+    private final ObjectMapper mapper;
     private final Map<String, BrowserSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, SharedSession> sharedSessions = new ConcurrentHashMap<>();
 
     public BrowserSessionManager(
             BrowserRuntime runtime,
             BrowserRuntimeProperties properties,
-            BrowserEnvironmentStore environments) {
+            BrowserEnvironmentStore environments,
+            ObjectMapper mapper) {
         this.runtime = runtime;
         this.properties = properties;
         this.profiles = new BrowserProfileRegistry(properties.profileRoot(), environments);
-        this.playwrightVersion = Optional.ofNullable(Playwright.class.getPackage().getImplementationVersion())
-                .orElse("unknown");
+        this.mapper = mapper;
     }
 
     public BrowserSessionLease openDefault(String url) {
@@ -62,18 +60,14 @@ public final class BrowserSessionManager {
 
     private BrowserSession createSession(String profileId, String url) {
         BrowserProfileLease lease = profiles.acquire(profileId);
-        BrowserContext context = null;
+        ChromeBrowser browser = null;
         BrowserSession session = null;
         try {
-            context = runtime.launch(lease.directory(), lease.environment());
-            String browserVersion = Optional.ofNullable(context.browser())
-                    .map(browser -> browser.version())
-                    .orElse("unknown");
+            browser = runtime.launch(lease.directory(), lease.environment());
             session = new BrowserSession(
                     UUID.randomUUID().toString(),
-                    context,
-                    browserVersion,
-                    playwrightVersion,
+                    browser,
+                    mapper,
                     properties.mode(),
                     properties.channel(),
                     lease);
@@ -83,21 +77,17 @@ public final class BrowserSessionManager {
             if (session != null) {
                 session.close();
             } else {
-                boolean contextClosed = true;
-                if (context != null) {
+                if (browser != null) {
                     try {
-                        context.close();
+                        browser.close();
                     } catch (RuntimeException closeFailure) {
-                        contextClosed = false;
-                        log.warn("启动失败后无法关闭浏览器 context: {}", closeFailure.getMessage());
+                        log.warn("启动失败后无法关闭浏览器: {}", closeFailure.getMessage());
                     }
                 }
-                if (contextClosed) {
-                    lease.close();
-                }
+                lease.close();
             }
             String message = "浏览器会话初始化失败";
-            if (context == null) {
+            if (browser == null) {
                 message = "无法启动真实 Chrome";
             }
             throw new IllegalStateException(message + "，配置 " + profileId, failure);

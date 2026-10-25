@@ -1,15 +1,12 @@
 package dev.w0fv1.browserbridge;
 
-import com.microsoft.playwright.BrowserContext;
-import com.microsoft.playwright.Mouse;
-import com.microsoft.playwright.Page;
-import com.microsoft.playwright.options.MouseButton;
-import com.microsoft.playwright.options.WaitUntilState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,24 +45,20 @@ public final class BrowserSession {
     private static final int MAX_QUALITY = 90;
     private static final int MIN_INTERVAL_MILLIS = 40;
     private static final int MAX_INTERVAL_MILLIS = 2000;
-    private static final double NAVIGATION_TIMEOUT_MILLIS = 10000;
+    private static final int MAX_TEXT_LENGTH = 256;
     private static final Logger log = LoggerFactory.getLogger(BrowserSession.class);
-    private static final Set<String> NAMED_KEYS = Set.of(
-            "Enter", "Tab", "Backspace", "Delete", "Escape", "Home", "End", "PageUp", "PageDown",
-            "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight");
 
     private final String id;
     private final String profileId;
-    private final BrowserContext context;
-    private final String browserVersion;
-    private final String playwrightVersion;
+    private final ChromeBrowser browser;
+    private final ObjectMapper mapper;
     private final BrowserMode mode;
     private final BrowserChannel channel;
     private final BrowserProfileLease profileLease;
     private final ThreadPoolExecutor executor;
     private final Object lifecycleLock = new Object();
     private final Map<String, BrowserTab> tabs = new LinkedHashMap<>();
-    private final Map<Page, BrowserTab> tabsByPage = new IdentityHashMap<>();
+    private final Map<String, BrowserTab> tabsByTarget = new LinkedHashMap<>();
     private final AtomicLong version = new AtomicLong();
     private final AtomicLong lastReceivedInputSequence = new AtomicLong(-1);
     private final AtomicLong lastAppliedInputSequence = new AtomicLong(-1);
@@ -75,7 +68,7 @@ public final class BrowserSession {
     private Future<?> closeFuture;
     private volatile String activeTabId;
     private volatile List<TabState> tabsSnapshot = List.of();
-    private volatile MouseButton pressedButton;
+    private volatile BrowserMouseButton pressedButton;
     private volatile String pressedTabId;
     private volatile int viewportWidth = DEFAULT_VIEWPORT_WIDTH;
     private volatile int viewportHeight = DEFAULT_VIEWPORT_HEIGHT;
@@ -87,17 +80,15 @@ public final class BrowserSession {
 
     BrowserSession(
             String id,
-            BrowserContext context,
-            String browserVersion,
-            String playwrightVersion,
+            ChromeBrowser browser,
+            ObjectMapper mapper,
             BrowserMode mode,
             BrowserChannel channel,
             BrowserProfileLease profileLease) {
         this.id = id;
         this.profileId = profileLease.profileId();
-        this.context = context;
-        this.browserVersion = browserVersion;
-        this.playwrightVersion = playwrightVersion;
+        this.browser = browser;
+        this.mapper = mapper;
         this.mode = mode;
         this.channel = channel;
         this.profileLease = profileLease;
@@ -122,25 +113,31 @@ public final class BrowserSession {
     void initialize(String url) {
         String target = normalizeUrl(url);
         submit(() -> {
-            context.onPage(page -> execute(() -> {
-                if (tabsByPage.containsKey(page)) return;
-                register(page);
-                publish();
-            }));
-            List<Page> existingPages = context.pages();
-            if (existingPages.isEmpty()) {
+            browser.connection().on("Target.targetCreated", event -> {
+                JsonNode info = event.path("targetInfo");
+                if (!"page".equals(info.path("type").asString(""))) return;
+                String targetId = info.path("targetId").asString("");
+                execute(() -> register(targetId));
+            });
+            browser.connection().on("Target.targetDestroyed", event -> {
+                String targetId = event.path("targetId").asString("");
+                execute(() -> removeClosedTarget(targetId));
+            });
+            ObjectNode discover = mapper.createObjectNode();
+            discover.put("discover", true);
+            browser.call("Target.setDiscoverTargets", discover);
+            List<String> targets = pageTargets();
+            for (int index = 1; index < targets.size(); index++) closeTarget(targets.get(index));
+            if (targets.isEmpty()) {
                 createTab(target);
                 return null;
             }
-            Page firstPage = existingPages.getFirst();
-            for (int index = 1; index < existingPages.size(); index++) {
-                closeQuietly(existingPages.get(index));
-            }
-            BrowserTab tab = register(firstPage);
+            BrowserTab tab = register(targets.getFirst());
             activeTabId = tab.id();
-            tab.page().bringToFront();
+            tab.activate();
             tab.resize(viewportWidth, viewportHeight);
-            navigate(tab, target);
+            tab.navigate(target);
+            publish();
             return null;
         });
     }
@@ -171,8 +168,8 @@ public final class BrowserSession {
         }
         return new BrowserInfo(
                 channel.displayName(),
-                browserVersion,
-                playwrightVersion,
+                browser.product(),
+                browser.protocolVersion(),
                 profileId,
                 profileLease.environment().mode(),
                 state.tabs().size(),
@@ -180,7 +177,6 @@ public final class BrowserSession {
                 activeUrl,
                 contextOpen(),
                 mode.headless(),
-                channel.playwrightName(),
                 new InputInfo(
                         lastReceivedInputSequence.get(),
                         lastAppliedInputSequence.get(),
@@ -194,7 +190,7 @@ public final class BrowserSession {
     }
 
     boolean isAvailable() {
-        return !closing && !executor.isShutdown() && browserConnected();
+        return !closing && !executor.isShutdown() && browser.isOpen();
     }
 
     public byte[] capture() {
@@ -234,7 +230,7 @@ public final class BrowserSession {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
             activeTabId = tab.id();
-            tab.page().bringToFront();
+            tab.activate();
             tab.resize(viewportWidth, viewportHeight);
             publish();
         });
@@ -242,25 +238,9 @@ public final class BrowserSession {
 
     public void closeTab(String tabId) {
         execute(() -> {
-            BrowserTab tab = tabs.remove(tabId);
+            BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tabsByPage.remove(tab.page());
-            if (tab.id().equals(activeTabId)) {
-                BrowserTab next = tabs.values().stream().findFirst().orElse(null);
-                activeTabId = null;
-                if (next != null) {
-                    activeTabId = next.id();
-                    next.page().bringToFront();
-                    next.resize(viewportWidth, viewportHeight);
-                }
-            }
-            if (tab.id().equals(pressedTabId)) {
-                pressedButton = null;
-                pressedTabId = null;
-            }
-            closeQuietly(tab.page());
-            if (tabs.isEmpty()) createTab("about:blank");
-            publish();
+            closeTarget(tab.targetId());
         });
     }
 
@@ -269,7 +249,8 @@ public final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            navigate(tab, normalizeUrl(url));
+            tab.navigate(normalizeUrl(url));
+            publish();
         });
     }
 
@@ -295,11 +276,7 @@ public final class BrowserSession {
         String tabId = activeTabId;
         executeInput(input, () -> {
             BrowserTab tab = tabs.get(tabId);
-            if (tab != null) {
-                tab.page().mouse().move(
-                        tab.mapX(input.x(), viewportWidth),
-                        tab.mapY(input.y(), viewportHeight));
-            }
+            if (tab != null) tab.move(mapX(tab, input.x()), mapY(tab, input.y()), input);
         });
     }
 
@@ -308,11 +285,9 @@ public final class BrowserSession {
         executeInput(input, () -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.page().mouse().move(
-                    tab.mapX(input.x(), viewportWidth),
-                    tab.mapY(input.y(), viewportHeight));
-            tab.page().mouse().down(new Mouse.DownOptions().setButton(input.mouseButton()));
-            pressedButton = input.mouseButton();
+            tab.move(mapX(tab, input.x()), mapY(tab, input.y()), input);
+            tab.press(mapX(tab, input.x()), mapY(tab, input.y()), input);
+            pressedButton = input.button();
             pressedTabId = tab.id();
         });
     }
@@ -322,10 +297,8 @@ public final class BrowserSession {
         executeInput(input, () -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.page().mouse().move(
-                    tab.mapX(input.x(), viewportWidth),
-                    tab.mapY(input.y(), viewportHeight));
-            tab.page().mouse().up(new Mouse.UpOptions().setButton(input.mouseButton()));
+            tab.move(mapX(tab, input.x()), mapY(tab, input.y()), input);
+            tab.release(mapX(tab, input.x()), mapY(tab, input.y()), input);
             pressedButton = null;
             pressedTabId = null;
         });
@@ -335,11 +308,7 @@ public final class BrowserSession {
         String tabId = activeTabId;
         executeInput(input, () -> {
             BrowserTab tab = tabs.get(tabId);
-            if (tab == null) return;
-            tab.page().mouse().click(
-                    tab.mapX(input.x(), viewportWidth),
-                    tab.mapY(input.y(), viewportHeight),
-                    new Mouse.ClickOptions().setButton(input.mouseButton()));
+            if (tab != null) tab.click(mapX(tab, input.x()), mapY(tab, input.y()), input);
         });
     }
 
@@ -348,29 +317,29 @@ public final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.page().mouse().move(
-                    tab.mapX(x, viewportWidth),
-                    tab.mapY(y, viewportHeight));
-            tab.page().mouse().wheel(deltaX, deltaY);
+            tab.wheel(mapX(tab, x), mapY(tab, y), deltaX, deltaY);
         });
     }
 
-    public void key(String key) {
-        if (key == null || key.isBlank()) return;
+    public void key(BrowserKeyInput input) {
         String tabId = activeTabId;
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
-            if (tab == null) return;
-            if (key.codePointCount(0, key.length()) == 1) {
-                tab.page().keyboard().insertText(key);
-            } else if (NAMED_KEYS.contains(key)) {
-                tab.page().keyboard().press(key);
-            }
+            if (tab != null) tab.key(input);
+        });
+    }
+
+    public void insertText(String text) {
+        if (text == null || text.isEmpty() || text.length() > MAX_TEXT_LENGTH) return;
+        String tabId = activeTabId;
+        execute(() -> {
+            BrowserTab tab = tabs.get(tabId);
+            if (tab != null) tab.insertText(text);
         });
     }
 
     public void releasePressedButton() {
-        MouseButton button = pressedButton;
+        BrowserMouseButton button = pressedButton;
         String tabId = pressedTabId;
         pressedButton = null;
         pressedTabId = null;
@@ -378,7 +347,8 @@ public final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.page().mouse().up(new Mouse.UpOptions().setButton(button));
+            BrowserInput input = new BrowserInput("up", 0, 0, 0, button, 0, 1, Set.of());
+            tab.release(mapX(tab, 0), mapY(tab, 0), input);
         });
     }
 
@@ -389,7 +359,7 @@ public final class BrowserSession {
                 closing = true;
                 try {
                     pendingClose = executor.submit(() -> {
-                        context.close();
+                        browser.close();
                         return null;
                     });
                 } catch (RejectedExecutionException failure) {
@@ -412,58 +382,73 @@ public final class BrowserSession {
                 recordFailure("close", interrupted);
             } catch (ExecutionException failure) {
                 Throwable cause = failure.getCause();
-                if (cause != null) {
-                    recordFailure("close", cause);
-                }
+                if (cause != null) recordFailure("close", cause);
             }
         }
-        if (closed || contextDisconnected()) {
-            profileLease.close();
+        if (!closed) {
+            try {
+                browser.close();
+            } catch (RuntimeException failure) {
+                recordFailure("close", failure);
+            }
         }
+        profileLease.close();
     }
 
-    private void createTab(String url) {
-        Page page = context.newPage();
-        BrowserTab tab = register(page);
-        if (tab == null) return;
+    private double mapX(BrowserTab tab, double x) {
+        return tab.mapX(x, viewportWidth);
+    }
+
+    private double mapY(BrowserTab tab, double y) {
+        return tab.mapY(y, viewportHeight);
+    }
+
+    private BrowserTab createTab(String url) {
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("url", "about:blank");
+        parameters.put("newWindow", false);
+        parameters.put("background", false);
+        String targetId = browser.call("Target.createTarget", parameters).path("targetId").asString("");
+        BrowserTab tab = register(targetId);
         activeTabId = tab.id();
-        tab.page().bringToFront();
+        tab.activate();
         tab.resize(viewportWidth, viewportHeight);
         publish();
-        navigate(tab, url);
-    }
-
-    private BrowserTab register(Page page) {
-        BrowserTab existing = tabsByPage.get(page);
-        if (existing != null) return existing;
-        BrowserTab tab = new BrowserTab(
-                UUID.randomUUID().toString(),
-                page,
-                context.newCDPSession(page),
-                mode);
-        tabs.put(tab.id(), tab);
-        tabsByPage.put(page, tab);
-        page.onLoad(ignored -> execute(() -> {
-            BrowserTab current = tabsByPage.get(page);
-            if (current == null) return;
-            current.refresh();
-            current.markLoaded();
-            publish();
-        }));
-        page.onClose(ignored -> execute(() -> removeClosedPage(page)));
-        page.onConsoleMessage(message -> {
-            if ("error".equals(message.type())) {
-                log.warn("远端页面控制台错误: {}", message.text());
-            } else {
-                log.debug("远端页面控制台 {}: {}", message.type(), message.text());
-            }
-        });
-        page.onPageError(error -> log.warn("远端页面异常: {}", String.valueOf(error)));
+        tab.navigate(url);
+        publish();
         return tab;
     }
 
-    private void removeClosedPage(Page page) {
-        BrowserTab tab = tabsByPage.remove(page);
+    private BrowserTab register(String targetId) {
+        BrowserTab existing = tabsByTarget.get(targetId);
+        if (existing != null) return existing;
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("targetId", targetId);
+        parameters.put("flatten", true);
+        String sessionId = browser.call("Target.attachToTarget", parameters).path("sessionId").asString("");
+        if (sessionId.isEmpty()) throw new IllegalStateException("无法附加浏览器标签页: " + targetId);
+        BrowserEnvironmentProfile environment = profileLease.environment();
+        BrowserTab tab = new BrowserTab(
+                UUID.randomUUID().toString(),
+                targetId,
+                new CdpSession(browser.connection(), sessionId),
+                browser.connection(),
+                mapper,
+                mode,
+                environment.deviceScaleFactor());
+        tab.applyEnvironment(environment);
+        tab.onLoad(() -> execute(() -> {
+            tab.markLoaded();
+            publish();
+        }));
+        tabs.put(tab.id(), tab);
+        tabsByTarget.put(targetId, tab);
+        publish();
+        return tab;
+    }
+
+    private void removeClosedTarget(String targetId) {
+        BrowserTab tab = tabsByTarget.remove(targetId);
         if (tab == null) return;
         tabs.remove(tab.id());
         if (tab.id().equals(activeTabId)) {
@@ -471,7 +456,7 @@ public final class BrowserSession {
             activeTabId = null;
             if (next != null) {
                 activeTabId = next.id();
-                next.page().bringToFront();
+                next.activate();
                 next.resize(viewportWidth, viewportHeight);
             }
         }
@@ -479,35 +464,29 @@ public final class BrowserSession {
             pressedButton = null;
             pressedTabId = null;
         }
-        if (tabs.isEmpty() && context.browser() != null && context.browser().isConnected()) {
-            createTab("about:blank");
-        }
+        if (tabs.isEmpty() && browser.isOpen()) createTab("about:blank");
         publish();
     }
 
-    private void navigate(BrowserTab tab, String url) {
-        tab.startNavigation(url);
-        publish();
-        try {
-            tab.page().navigate(url, new Page.NavigateOptions()
-                    .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
-                    .setTimeout(NAVIGATION_TIMEOUT_MILLIS));
-            tab.refresh();
-            publish();
-        } catch (RuntimeException failure) {
-            String message = "导航失败";
-            if (failure.getMessage() != null) {
-                message = failure.getMessage();
-            }
-            tab.markNavigationFailure(message);
-            publish();
-            log.warn("远端页面导航失败 {}: {}", url, message);
+    private void closeTarget(String targetId) {
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("targetId", targetId);
+        browser.call("Target.closeTarget", parameters);
+    }
+
+    private List<String> pageTargets() {
+        List<String> targets = new ArrayList<>();
+        for (JsonNode target : browser.call("Target.getTargets", null).path("targetInfos")) {
+            if (!"page".equals(target.path("type").asString(""))) continue;
+            targets.add(target.path("targetId").asString(""));
         }
+        return targets;
     }
 
     private void publish() {
         List<TabState> snapshot = new ArrayList<>(tabs.size());
         for (BrowserTab tab : tabs.values()) {
+            tab.refresh();
             snapshot.add(new TabState(
                     tab.id(),
                     tab.title(),
@@ -609,19 +588,7 @@ public final class BrowserSession {
 
     private boolean contextOpen() {
         if (closing || executor.isShutdown()) return false;
-        return browserConnected();
-    }
-
-    private boolean contextDisconnected() {
-        return !browserConnected();
-    }
-
-    private boolean browserConnected() {
-        try {
-            return context.browser() != null && context.browser().isConnected();
-        } catch (RuntimeException ignored) {
-            return false;
-        }
+        return browser.isOpen();
     }
 
     private static String normalizeUrl(String url) {
@@ -632,13 +599,6 @@ public final class BrowserSession {
         if (value.isEmpty()) return "about:blank";
         if (value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*:.*$")) return value;
         return "https://" + value;
-    }
-
-    private static void closeQuietly(Page page) {
-        try {
-            page.close();
-        } catch (RuntimeException ignored) {
-        }
     }
 
     public record TabState(String id, String title, String url, boolean loading, String error) {
@@ -658,7 +618,7 @@ public final class BrowserSession {
     public record BrowserInfo(
             String engine,
             String browserVersion,
-            String playwrightVersion,
+            String protocolVersion,
             String profileId,
             BrowserEnvironmentMode environmentMode,
             int tabCount,
@@ -666,7 +626,6 @@ public final class BrowserSession {
             String activeUrl,
             boolean contextOpen,
             boolean headless,
-            String channel,
             InputInfo input,
             BrowserFailure lastFailure) {
     }

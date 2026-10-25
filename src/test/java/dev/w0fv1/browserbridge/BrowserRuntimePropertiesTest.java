@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,12 +17,13 @@ final class BrowserRuntimePropertiesTest {
 
     @Test
     void defaultsToHeadedChromeAndPersistentProfileRoot() {
-        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(null, null, null);
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(null, null, null, null);
 
         assertThat(properties.mode()).isEqualTo(BrowserMode.HEADED);
         assertThat(properties.channel()).isEqualTo(BrowserChannel.CHROME);
         assertThat(properties.profileRoot()).isEqualTo(Path.of(
                 System.getProperty("user.home"), ".browser-bridge", "profiles"));
+        assertThat(properties.executable()).isNull();
     }
 
     @Test
@@ -59,8 +61,26 @@ final class BrowserRuntimePropertiesTest {
     @Test
     void rejectsBlankProfileRoot() {
         assertThatThrownBy(() -> new BrowserRuntimeProperties(
-                BrowserMode.HEADED, BrowserChannel.CHROME, Path.of("")))
+                BrowserMode.HEADED, BrowserChannel.CHROME, Path.of(""), null))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsMissingExecutable() {
+        assertThatThrownBy(() -> new BrowserRuntimeProperties(
+                BrowserMode.HEADED, BrowserChannel.CHROME, null, Path.of("missing-browser.exe")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("可执行文件");
+    }
+
+    @Test
+    void normalizesConfiguredExecutable(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        Path executable = Files.createFile(directory.resolve("browser.exe"));
+
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
+                BrowserMode.HEADED, BrowserChannel.CHROME, null, executable);
+
+        assertThat(properties.executable()).isEqualTo(executable.toAbsolutePath().normalize());
     }
 
     @Configuration(proxyBeanMethods = false)

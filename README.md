@@ -6,8 +6,9 @@
 
 ## 特性
 
-- **真实 Chrome 内核**：通过 Playwright `channel=chrome` 启动本机安装的 Chrome，而不是 Playwright 自带 Chromium。
-- **统一运行模式**：headed 与 headless 共用同一 Chrome 通道、持久化 context、会话、采帧与输入实现；headless 不需要图形桌面。
+- **真实 Chrome 内核**：直接启动本机安装的 Chrome/Edge 进程，不依赖 Playwright、Puppeteer 或 Selenium，因此不会带上自动化启动器注入的调试特征。
+- **纯 CDP 控制**：画面采集、输入下发、标签页与视口全部走 DevTools 协议，不开启 `Runtime.enable`、不注入页面脚本。
+- **统一运行模式**：headed 与 headless 共用同一 Chrome 通道、持久化 profile、会话、采帧与输入实现；headless 不需要图形桌面。
 - **持久化配置**：每个配置目录保留 cookie、localStorage 与登录状态，重启会话不丢失。
 - **Profile 租约**：命名 profile 在一次运行中只能被一个活动会话占用，避免多个 Chrome 进程争用同一目录。
 - **环境画像**：每个 Profile 可固定语言、时区、色彩方案、设备像素比和权限，也可保持原生环境。
@@ -17,6 +18,16 @@
 - **多标签页**：新建、切换、关闭标签页，支持 `window.open` 弹窗。
 - **画面参数**：JPEG 质量、帧间隔、带宽与延迟模拟可在页面内调整。
 - **实时遥测**：连接、服务器资源、浏览器版本、帧率、流量、输入队列状态和最近一次浏览器操作错误。
+
+## 反自动化检测约束
+
+以下不变量由 [`BrowserStealthTest.java`](src/test/java/dev/w0fv1/browserbridge/BrowserStealthTest.java) 守护，改动时不要绕过：
+
+- 启动参数只有 [`BrowserRuntime#arguments`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntime.java) 一个来源；其中不出现 `--enable-automation`，并用 `--disable-blink-features=AutomationControlled` 保持 `navigator.webdriver === false`。
+- 不开启 `Runtime.enable`，不使用 `Page.addScriptToEvaluateOnNewDocument`，不注入任何页面脚本；标签页地址与标题取自 `Target.getTargetInfo`。
+- 页面环境只用 Chrome 启动参数与 `Emulation` 域的浏览器原生覆盖实现，见 [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPageEnvironment.java)。
+- 输入按真实鼠标、键盘语义下发：携带修饰键位掩码与点击计数，键位带 `code`、`keyCode`、`location`，不伪造事件时间戳。
+- 关闭浏览器先发 `Browser.close` 并等待进程自行退出，保证 profile 落盘。
 
 ## 环境要求
 
@@ -61,6 +72,7 @@ http://localhost:8080/?url=https://example.com/
 | 运行模式 | `browser.bridge.mode` | `BROWSER_BRIDGE_MODE` | `headed` |
 | 浏览器通道 | `browser.bridge.channel` | `BROWSER_BRIDGE_CHANNEL` | `chrome` |
 | 配置根目录 | `browser.bridge.profile-root` | `BROWSER_BRIDGE_PROFILE_ROOT` | `~/.browser-bridge/profiles` |
+| 可执行文件 | `browser.bridge.executable` | `BROWSER_BRIDGE_EXECUTABLE` | 按通道自动定位 |
 
 通道只接受 `chrome` 与 `msedge`，运行模式只接受 `headed` 与 `headless`。两种模式都使用本机安装的 Chrome/Edge；无头模式的 Chrome 版本、profile 和内容区尺寸由同一套配置控制。
 
@@ -92,24 +104,29 @@ http://localhost:8080/?url=https://example.com/
 
 - `profileId` 必须与目录名一致，只允许字母、数字、下划线和连字符，最长 64 个字符。
 - `mode` 为 `NATIVE` 或 `MANAGED`；`NATIVE` 不允许覆盖其他环境字段。
-- `locale` 使用 BCP 47 标签，`timezone` 使用 IANA 时区标识，`colorScheme` 为 `LIGHT`、`DARK` 或 `NO_PREFERENCE`。
+- `locale` 使用 BCP 47 标签，同时写入 Chrome 的 `--accept-lang` 与页面 locale 覆盖，保证 `navigator.language`、`navigator.languages` 与请求头一致。
+- `timezone` 使用 IANA 时区标识，`colorScheme` 为 `LIGHT`、`DARK` 或 `NO_PREFERENCE`。
 - `deviceScaleFactor` 范围为 `0.5` 至 `4.0`，通过 Chrome 的设备像素比启动参数应用。
-- `permissions` 使用 [`BrowserPermission.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPermission.java) 中的枚举名。
+- `permissions` 使用 [`BrowserPermission.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPermission.java) 中的枚举名，按 CDP 权限类型授权。
 
 画像在 Profile 租约创建时读取，运行中不会热更新；修改后新建会话生效。同一 Profile 同时只允许一个活动会话。视口尺寸仍由页面 `viewport.resize` 流程管理，不写入画像。
 
-环境画像只使用 Playwright 与 Chrome 原生选项，不注入 stealth 脚本，也不修改 Canvas、WebGL、字体或浏览器原型。
+环境画像不注入 stealth 脚本，也不修改 Canvas、WebGL、字体或浏览器原型；它只使用 Chrome 启动参数和 `Emulation` 域的原生覆盖，保持原型链与函数 `toString` 的原样输出。
 
 ## 结构
 
 | 职责 | 入口 |
 | --- | --- |
 | 运行配置 | [`BrowserRuntimeProperties.java`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntimeProperties.java) |
-| Playwright 与 Chrome 生命周期 | [`BrowserRuntime.java`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntime.java) |
+| 浏览器进程与启动参数 | [`BrowserRuntime.java`](src/main/java/dev/w0fv1/browserbridge/BrowserRuntime.java)、[`ChromeProcess.java`](src/main/java/dev/w0fv1/browserbridge/ChromeProcess.java)、[`ChromeBrowser.java`](src/main/java/dev/w0fv1/browserbridge/ChromeBrowser.java) |
+| 可执行文件定位 | [`BrowserChannel.java`](src/main/java/dev/w0fv1/browserbridge/BrowserChannel.java) |
+| DevTools 协议传输 | [`CdpConnection.java`](src/main/java/dev/w0fv1/browserbridge/CdpConnection.java)、[`CdpSession.java`](src/main/java/dev/w0fv1/browserbridge/CdpSession.java) |
 | Profile 目录与租约 | [`BrowserProfileRegistry.java`](src/main/java/dev/w0fv1/browserbridge/BrowserProfileRegistry.java) |
 | 环境画像与校验 | [`BrowserEnvironmentProfile.java`](src/main/java/dev/w0fv1/browserbridge/BrowserEnvironmentProfile.java) |
+| 页面环境覆盖 | [`BrowserPageEnvironment.java`](src/main/java/dev/w0fv1/browserbridge/BrowserPageEnvironment.java) |
 | 画像文件存储 | [`BrowserEnvironmentStore.java`](src/main/java/dev/w0fv1/browserbridge/BrowserEnvironmentStore.java) |
 | 会话、输入与失败状态 | [`BrowserSession.java`](src/main/java/dev/w0fv1/browserbridge/BrowserSession.java) |
+| 输入协议 | [`BrowserInput.java`](src/main/java/dev/w0fv1/browserbridge/BrowserInput.java)、[`BrowserKeyInput.java`](src/main/java/dev/w0fv1/browserbridge/BrowserKeyInput.java) |
 | 标签页与采帧 | [`BrowserTab.java`](src/main/java/dev/w0fv1/browserbridge/BrowserTab.java) |
 | Headed/headless 视口语义 | [`BrowserViewport.java`](src/main/java/dev/w0fv1/browserbridge/BrowserViewport.java) |
 | 会话注册 | [`BrowserSessionManager.java`](src/main/java/dev/w0fv1/browserbridge/BrowserSessionManager.java) |
@@ -117,7 +134,7 @@ http://localhost:8080/?url=https://example.com/
 | 前端画面与输入 | [`browser-stream.js`](src/main/frontend/browser-stream.js) |
 | Vaadin 页面 | [`BrowserBridgeView.java`](src/main/java/dev/w0fv1/browserbridge/BrowserBridgeView.java) |
 
-前端到服务端使用 `viewport.resize`、`tab.*`、`stream.configure` 与指针/键盘消息；服务端返回带 12 字节帧头的 JPEG 分片、会话状态和 `telemetry` 消息。
+前端到服务端使用 `viewport.resize`、`tab.*`、`stream.configure`、指针消息（`move`/`down`/`up`/`cancel`/`context`/`wheel`）、键盘消息（`key`）与输入法提交（`text`）；服务端返回带 12 字节帧头的 JPEG 分片、会话状态和 `telemetry` 消息。
 
 ## 安全
 

@@ -12,8 +12,6 @@ class BrowserStreamElement extends HTMLElement {
   #chunks = new Map()
   #drawing = false
   #latestFrameId = -1
-  #moveFrame = 0
-  #pendingMove = null
   #pointerSequence = 0
   #qualityTimer = null
   #focusAddressOnTabChange = false
@@ -30,9 +28,6 @@ class BrowserStreamElement extends HTMLElement {
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
     clearTimeout(this.#qualityTimer)
-    if (this.#moveFrame) cancelAnimationFrame(this.#moveFrame)
-    this.#moveFrame = 0
-    this.#pendingMove = null
     this.#socket?.close()
     this.#socket = null
   }
@@ -157,6 +152,9 @@ class BrowserStreamElement extends HTMLElement {
     canvas.addEventListener('pointercancel', event => this.#pointerCancel(event))
     canvas.addEventListener('wheel', event => this.#wheel(event), {passive: false})
     canvas.addEventListener('keydown', event => this.#key(event))
+    canvas.addEventListener('compositionend', event => {
+      if (event.data) this.#send({type: 'text', text: event.data})
+    })
     canvas.addEventListener('contextmenu', event => event.preventDefault())
     this.hud = document.createElement('div')
     this.hud.style.cssText = 'position:absolute;left:8px;top:8px;right:8px;min-height:20px;padding:3px 6px;background:rgba(0,0,0,.62);color:#fff;font:12px/1.4 monospace;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'
@@ -350,14 +348,12 @@ class BrowserStreamElement extends HTMLElement {
       : '不限速'
     let runtime = '--'
     if (browser.headless !== null && browser.headless !== undefined) {
-      let mode = 'headed'
-      if (browser.headless) mode = 'headless'
-      runtime = `${mode} ${browser.channel || 'bundled'}`
+      runtime = browser.headless ? 'headless' : 'headed'
     }
     const failure = browser.lastFailure
       ? ` | 最近错误 ${browser.lastFailure.operation}: ${browser.lastFailure.message}`
       : ''
-    this.browserInfo.textContent = `浏览器 | ${browser.engine} ${browser.browserVersion} | Playwright ${browser.playwrightVersion} | 运行 ${runtime} | 环境 ${browser.environmentMode || 'NATIVE'} | 配置 ${browser.profileId || '--'} | Context ${browser.contextOpen ? 'OPEN' : 'CLOSED'} | 标签页 ${browser.tabCount} | 当前 ${browser.activeTitle || '无标题'} | ${browser.activeUrl || 'about:blank'} | ${network} | 服务端帧 ${stream.framesSent} | 流量 ${this.#bytes(stream.bytesSent)} | 当前帧 ${this.#bytes(stream.lastFrameBytes)} | 输入 ${input.lastAppliedSequence ?? '--'}/${input.lastReceivedSequence ?? '--'} | 队列 ${input.pendingOperations ?? '--'} | 拒绝 ${input.rejectedOperations ?? '--'}${failure}`
+    this.browserInfo.textContent = `浏览器 | ${browser.engine} ${browser.browserVersion} | CDP ${browser.protocolVersion} | 运行 ${runtime} | 环境 ${browser.environmentMode || 'NATIVE'} | 配置 ${browser.profileId || '--'} | Context ${browser.contextOpen ? 'OPEN' : 'CLOSED'} | 标签页 ${browser.tabCount} | 当前 ${browser.activeTitle || '无标题'} | ${browser.activeUrl || 'about:blank'} | ${network} | 服务端帧 ${stream.framesSent} | 流量 ${this.#bytes(stream.bytesSent)} | 当前帧 ${this.#bytes(stream.lastFrameBytes)} | 输入 ${input.lastAppliedSequence ?? '--'}/${input.lastReceivedSequence ?? '--'} | 队列 ${input.pendingOperations ?? '--'} | 拒绝 ${input.rejectedOperations ?? '--'}${failure}`
   }
 
   #bytes(value) {
@@ -523,8 +519,7 @@ class BrowserStreamElement extends HTMLElement {
     this.#send({type: 'tab.navigate', url: target})
   }
 
-  #point(event) {
-    const box = this.#canvas.getBoundingClientRect()
+  #point(event, box = this.#canvas.getBoundingClientRect()) {
     return {
       x: (event.clientX - box.left) * this.#canvas.width / box.width,
       y: (event.clientY - box.top) * this.#canvas.height / box.height,
@@ -546,42 +541,44 @@ class BrowserStreamElement extends HTMLElement {
   }
 
   #pointerMove(event) {
-    this.#pendingMove = {event, point: this.#point(event)}
-    if (this.#moveFrame) return
-    this.#moveFrame = requestAnimationFrame(() => {
-      this.#moveFrame = 0
-      const pending = this.#pendingMove
-      this.#pendingMove = null
-      if (pending) this.#send(this.#pointerMessage('move', pending.event, pending.point))
-    })
+    const box = this.#canvas.getBoundingClientRect()
+    const coalesced = event.getCoalescedEvents ? event.getCoalescedEvents() : []
+    const samples = coalesced.length ? coalesced : [event]
+    for (const sample of samples) {
+      this.#send(this.#pointerMessage('move', sample, this.#point(sample, box)))
+    }
   }
 
   #pointerUp(event) {
     if (event.button === 2) return
-    if (this.#moveFrame) cancelAnimationFrame(this.#moveFrame)
-    this.#moveFrame = 0
-    this.#pendingMove = null
     this.#send(this.#pointerMessage('up', event, this.#point(event)))
     if (this.#canvas.hasPointerCapture(event.pointerId)) this.#canvas.releasePointerCapture(event.pointerId)
   }
 
   #pointerCancel(event) {
-    if (this.#moveFrame) cancelAnimationFrame(this.#moveFrame)
-    this.#moveFrame = 0
-    this.#pendingMove = null
-    this.#send(this.#pointerMessage('cancel', event, this.#point(event), 0))
+    this.#send(this.#pointerMessage('cancel', event, this.#point(event)))
     if (this.#canvas.hasPointerCapture(event.pointerId)) this.#canvas.releasePointerCapture(event.pointerId)
   }
 
-  #pointerMessage(type, event, point, button = event.button) {
+  #pointerMessage(type, event, point) {
+    const moving = type === 'move'
     return {
       type,
       ...point,
-      button,
+      button: moving ? -1 : event.button,
       buttons: event.buttons,
-      pointerId: event.pointerId,
+      clickCount: moving ? 1 : Math.max(1, Math.min(3, event.detail || 1)),
       seq: this.#pointerSequence++,
-      clientTime: Date.now(),
+      ...this.#modifiers(event),
+    }
+  }
+
+  #modifiers(event) {
+    return {
+      alt: event.altKey,
+      ctrl: event.ctrlKey,
+      meta: event.metaKey,
+      shift: event.shiftKey,
     }
   }
 
@@ -598,7 +595,16 @@ class BrowserStreamElement extends HTMLElement {
 
   #key(event) {
     event.preventDefault()
-    this.#send({type: 'key', key: event.key})
+    if (event.isComposing) return
+    this.#send({
+      type: 'key',
+      key: event.key,
+      code: event.code,
+      keyCode: event.keyCode,
+      location: event.location,
+      repeat: event.repeat,
+      ...this.#modifiers(event),
+    })
   }
 
   #send(value) {

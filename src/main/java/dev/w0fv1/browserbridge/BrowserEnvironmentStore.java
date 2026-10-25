@@ -1,6 +1,5 @@
 package dev.w0fv1.browserbridge;
 
-import com.microsoft.playwright.options.ColorScheme;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -89,9 +88,9 @@ public final class BrowserEnvironmentStore {
         if (stored.colorScheme() == null || stored.colorScheme().isBlank()) {
             throw new IllegalArgumentException("浏览器环境画像缺少色彩方案：" + manifest);
         }
-        ColorScheme colorScheme;
+        BrowserColorScheme colorScheme;
         try {
-            colorScheme = ColorScheme.valueOf(stored.colorScheme());
+            colorScheme = BrowserColorScheme.valueOf(stored.colorScheme());
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("浏览器环境画像色彩方案无效：" + manifest, exception);
         }
