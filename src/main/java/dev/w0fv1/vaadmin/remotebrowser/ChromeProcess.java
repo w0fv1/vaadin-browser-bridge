@@ -7,7 +7,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 final class ChromeProcess implements AutoCloseable {
     private static final String PORT_FILE = "DevToolsActivePort";
@@ -50,7 +52,8 @@ final class ChromeProcess implements AutoCloseable {
             int port = Integer.parseInt(lines.get(0).trim());
             return new ChromeProcess(process, URI.create("ws://127.0.0.1:" + port + lines.get(1).trim()), output);
         } catch (RuntimeException failure) {
-            terminate(process);
+            ProcessHandle handle = process.toHandle();
+            terminate(handle, handle.descendants().toList());
             output.close();
             throw failure;
         }
@@ -64,19 +67,17 @@ final class ChromeProcess implements AutoCloseable {
         return process.isAlive();
     }
 
-    boolean awaitExit(Duration timeout) {
-        try {
-            return process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            return !process.isAlive();
-        }
+    void shutdown(Duration grace) {
+        ProcessHandle handle = process.toHandle();
+        List<ProcessHandle> descendants = handle.descendants().toList();
+        awaitExit(handle, grace);
+        terminate(handle, descendants);
+        output.close();
     }
 
     @Override
     public void close() {
-        terminate(process);
-        output.close();
+        shutdown(Duration.ZERO);
     }
 
     private static List<String> awaitPort(
@@ -107,16 +108,29 @@ final class ChromeProcess implements AutoCloseable {
         }
     }
 
-    private static void terminate(Process process) {
-        if (!process.isAlive()) return;
-        process.destroy();
+    private static void terminate(ProcessHandle handle, List<ProcessHandle> descendants) {
+        stop(handle);
+        descendants.forEach(ChromeProcess::stop);
+        descendants.forEach(descendant -> awaitExit(descendant, STOP_TIMEOUT));
+    }
+
+    private static void stop(ProcessHandle handle) {
+        if (!handle.isAlive()) return;
+        handle.destroy();
+        if (awaitExit(handle, STOP_TIMEOUT)) return;
+        handle.destroyForcibly();
+        awaitExit(handle, STOP_TIMEOUT);
+    }
+
+    private static boolean awaitExit(ProcessHandle handle, Duration timeout) {
         try {
-            if (process.waitFor(STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) return;
-            process.destroyForcibly();
-            process.waitFor(STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            handle.onExit().get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            return true;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            process.destroyForcibly();
+            return !handle.isAlive();
+        } catch (ExecutionException | TimeoutException failure) {
+            return !handle.isAlive();
         }
     }
 }
