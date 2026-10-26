@@ -12,6 +12,17 @@ import java.util.Locale;
 
 final class BrowserRuntime {
     private static final Duration LAUNCH_TIMEOUT = Duration.ofSeconds(30);
+    private static final List<String> HOSTED_FLAGS = List.of(
+            "--disable-extensions",
+            "--disable-sync",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-default-apps",
+            "--disable-domain-reliability",
+            "--disable-breakpad",
+            "--no-pings",
+            "--metrics-recording-only",
+            "--disable-features=Translate,MediaRouter,OptimizationHints");
 
     private final BrowserRuntimeProperties properties;
     private final ObjectMapper mapper;
@@ -55,8 +66,13 @@ final class BrowserRuntime {
                 "--disable-blink-features=AutomationControlled",
                 "--window-size=" + BrowserSession.DEFAULT_VIEWPORT_WIDTH
                         + "," + BrowserSession.DEFAULT_VIEWPORT_HEIGHT));
+        arguments.addAll(HOSTED_FLAGS);
         if (properties.mode().headless()) arguments.add("--headless=new");
         if (!properties.sandbox()) arguments.add("--no-sandbox");
+        if (properties.mediaPolicy().mutesAudio()) arguments.add("--mute-audio");
+        if (properties.mediaPolicy().blocksPlayback()) {
+            arguments.add("--autoplay-policy=user-gesture-required");
+        }
         if (environment.mode() == BrowserEnvironmentMode.MANAGED) {
             arguments.add("--accept-lang=" + acceptLanguage(environment.locale()));
             arguments.add("--force-device-scale-factor=" + environment.deviceScaleFactor());
@@ -72,8 +88,8 @@ final class BrowserRuntime {
     }
 
     private void grantPermissions(ChromeBrowser browser, BrowserEnvironmentProfile environment) {
-        if (environment.permissions().isEmpty()) return;
         ArrayNode permissions = mapper.createArrayNode();
+        permissions.add("clipboardReadWrite").add("clipboardSanitizedWrite");
         environment.permissions().stream().sorted().forEach(permission -> permissions.add(permission.cdpName()));
         ObjectNode parameters = mapper.createObjectNode();
         parameters.set("permissions", permissions);

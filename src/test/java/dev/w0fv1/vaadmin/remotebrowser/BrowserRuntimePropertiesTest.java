@@ -33,6 +33,25 @@ final class BrowserRuntimePropertiesTest {
         assertThat(properties.enabled()).isTrue();
         assertThat(properties.websocketPath()).isEqualTo("/browser-stream");
         assertThat(properties.allowedOriginPatterns()).isEmpty();
+        assertThat(properties.mediaPolicy()).isEqualTo(BrowserMediaPolicy.BLOCK);
+    }
+
+    @Test
+    void bindsMediaPolicy() {
+        contextRunner
+                .withPropertyValues("browser.remote.media-policy=allow")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(BrowserRuntimeProperties.class).mediaPolicy())
+                            .isEqualTo(BrowserMediaPolicy.ALLOW);
+                });
+    }
+
+    @Test
+    void rejectsUnsupportedMediaPolicy() {
+        contextRunner
+                .withPropertyValues("browser.remote.media-policy=silent")
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
@@ -44,7 +63,7 @@ final class BrowserRuntimePropertiesTest {
 
     private static BrowserRuntimeProperties properties(String websocketPath) {
         return new BrowserRuntimeProperties(
-                BrowserMode.HEADED, BrowserChannel.CHROME, null, null, true, true, websocketPath, null);
+                BrowserMode.HEADED, BrowserChannel.CHROME, null, null, true, true, websocketPath, null, null);
     }
 
     @Test

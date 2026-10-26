@@ -126,6 +126,7 @@ final class BrowserSessionManager implements RemoteBrowser {
                     mapper,
                     properties.mode(),
                     properties.channel(),
+                    properties.mediaPolicy(),
                     lease);
             session.initialize(url);
             return session;

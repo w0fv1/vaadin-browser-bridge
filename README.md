@@ -74,8 +74,18 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 | `browser.remote.executable` | `BROWSER_REMOTE_EXECUTABLE` | 按通道自动定位 |
 | `browser.remote.websocket-path` | `BROWSER_REMOTE_WEBSOCKET_PATH` | `/browser-stream` |
 | `browser.remote.allowed-origin-patterns` | `BROWSER_REMOTE_ALLOWED_ORIGIN_PATTERNS` | 空（仅同源） |
+| `browser.remote.media-policy` | `BROWSER_REMOTE_MEDIA_POLICY` | `BLOCK` |
 
 通道只接受 `chrome` 与 `msedge`，运行模式只接受 `headed` 与 `headless`。无头模式没有真实操作系统窗口，GPU、媒体解码、字体与窗口外观仍取决于运行环境；需要完整 headed 行为时应在隔离的虚拟显示环境运行 headed，而不是在 headless 上伪装。
+
+## 托管行为
+
+- 媒体策略：`ALLOW` 原样播放；`MUTE` 追加 `--mute-audio`；`BLOCK` 再禁止自动播放并拦截 `HTMLMediaElement.play`，页面既不出声也播不起来。
+- 光标：页面把指针下的 `cursor` 样式上报，客户端画布同步显示（`BrowserTab.CURSOR_BINDING`）。
+- 剪贴板：客户端 `Ctrl+C` / `Ctrl+X` 读回远端剪贴板写入本地，本地 `Ctrl+V` 直接注入远端输入（`clipboard.read` 与 `text` 消息）。
+- 静帧：连续两帧相同时抓帧间隔回落到 `BrowserStreamHandler.IDLE_INTERVAL_MILLIS`，画面一变化立刻恢复。
+- 启动参数固定关闭扩展、同步、组件更新与后台联网，削减无关内存与磁盘占用（`BrowserRuntime.HOSTED_FLAGS`）。
+
 
 ## Linux 与容器
 

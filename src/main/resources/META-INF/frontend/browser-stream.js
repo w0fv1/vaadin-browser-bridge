@@ -282,6 +282,8 @@ class BrowserStreamElement extends HTMLElement {
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)
         if (message.type === 'telemetry') this.#applyTelemetry(message)
+        else if (message.type === 'cursor') this.#applyCursor(message.value)
+        else if (message.type === 'clipboard') this.#copyToLocal(message.text)
         else this.#applyState(message)
       } else this.#renderChunk(event.data)
     }
@@ -614,6 +616,12 @@ class BrowserStreamElement extends HTMLElement {
   #key(event) {
     event.preventDefault()
     if (event.isComposing) return
+    const command = event.ctrlKey || event.metaKey
+    const key = event.key.toLowerCase()
+    if (command && key === 'v') {
+      this.#pasteFromLocal()
+      return
+    }
     this.#send({
       type: 'key',
       key: event.key,
@@ -623,6 +631,43 @@ class BrowserStreamElement extends HTMLElement {
       repeat: event.repeat,
       ...this.#modifiers(event),
     })
+    if (command && ['c', 'x'].includes(key)) {
+      setTimeout(() => this.#send({type: 'clipboard.read'}), 150)
+    }
+  }
+
+  async #pasteFromLocal() {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) this.#send({type: 'text', text})
+    } catch (ignored) {
+    }
+  }
+
+  #applyCursor(value) {
+    if (!this.#canvas) return
+    const raw = typeof value === 'string' ? value.trim() : ''
+    const fallback = raw.includes('url(') ? (raw.split(',').pop() || 'default').trim() : raw
+    this.#canvas.style.cursor = /^[a-z-]+$/.test(fallback) ? fallback : 'default'
+  }
+
+  async #copyToLocal(text) {
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch (ignored) {
+    }
+    const area = document.createElement('textarea')
+    area.value = text
+    area.style.cssText = 'position:fixed;opacity:0;pointer-events:none'
+    document.body.append(area)
+    area.select()
+    try {
+      document.execCommand('copy')
+    } finally {
+      area.remove()
+    }
   }
 
   #send(value) {

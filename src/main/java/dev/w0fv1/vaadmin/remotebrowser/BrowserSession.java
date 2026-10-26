@@ -57,6 +57,7 @@ final class BrowserSession {
     private final ObjectMapper mapper;
     private final BrowserMode mode;
     private final BrowserChannel channel;
+    private final BrowserMediaPolicy mediaPolicy;
     private final BrowserProfileLease profileLease;
     private final ThreadPoolExecutor inputLane;
     private final ExecutorService captureLane;
@@ -85,6 +86,7 @@ final class BrowserSession {
     private volatile boolean networkEnabled = DEFAULT_NETWORK_ENABLED;
     private volatile int bandwidthBytesPerSecond = DEFAULT_BANDWIDTH_BYTES_PER_SECOND;
     private volatile int latencyMillis = DEFAULT_LATENCY_MILLIS;
+    private volatile String cursor = "auto";
 
     BrowserSession(
             String id,
@@ -92,6 +94,7 @@ final class BrowserSession {
             ObjectMapper mapper,
             BrowserMode mode,
             BrowserChannel channel,
+            BrowserMediaPolicy mediaPolicy,
             BrowserProfileLease profileLease) {
         this.id = id;
         this.profileId = profileLease.profileId();
@@ -99,6 +102,7 @@ final class BrowserSession {
         this.mapper = mapper;
         this.mode = mode;
         this.channel = channel;
+        this.mediaPolicy = mediaPolicy;
         this.profileLease = profileLease;
         this.inputLane = new ThreadPoolExecutor(
                 1,
@@ -196,6 +200,16 @@ final class BrowserSession {
 
     boolean isAvailable() {
         return !closing && !inputLane.isShutdown() && browser.isOpen();
+    }
+
+    public String cursor() {
+        return cursor;
+    }
+
+    public String clipboardText() {
+        BrowserTab tab = tabs.get(activeTabId);
+        if (tab == null) return "";
+        return tab.evaluate("navigator.clipboard.readText().catch(() => '')").asString("");
     }
 
     public byte[] capture() {
@@ -480,7 +494,9 @@ final class BrowserSession {
                 browser.connection(),
                 mapper,
                 mode,
-                environment.deviceScaleFactor());
+                environment.deviceScaleFactor(),
+                mediaPolicy);
+        tab.onCursor(value -> cursor = value);
         tab.applyEnvironment(environment);
         tab.applyTargetInfo(session.call("Target.getTargetInfo", null).path("targetInfo"));
         tab.onLoad(() -> execute(() -> {
