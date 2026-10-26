@@ -322,10 +322,17 @@ class BrowserStreamElement extends HTMLElement {
   }
 
   #checkLiveness() {
-    if (this.#socket?.readyState !== WebSocket.OPEN) return
-    if (!this.#lastMessageAt) return
+    if (!this.#socket || !this.#lastMessageAt) return
     if (Date.now() - this.#lastMessageAt < 8000) return
-    this.#socket.close()
+    const stale = this.#socket
+    this.#socket = null
+    this.#socketGeneration += 1
+    const generation = this.#socketGeneration
+    try {
+      stale.close()
+    } catch (ignored) {
+    }
+    this.#scheduleReconnect(generation)
   }
 
   #applyState(state) {
@@ -383,7 +390,7 @@ class BrowserStreamElement extends HTMLElement {
     const cap = stream?.networkEnabled ? `${this.#bytes(stream.bandwidthBytesPerSecond)}/s` : '不限速'
     const latency = this.#stats.serverLatencyMs >= 0 ? `${this.#stats.serverLatencyMs} ms` : '--'
     const average = this.#stats.frameBytes ? `${(this.#stats.frameBytes / 1024).toFixed(1)} KB` : '--'
-    this.hud.textContent = `画布 ${this.#canvas.width}×${this.#canvas.height} · 远端 ${this.#viewport.width}×${this.#viewport.height} · 当前 ${this.#stats.lastFrameBytes} B · 均 ${average} · 收 ${this.#stats.fps.toFixed(1)} fps · 绘 ${this.#stats.renderFps.toFixed(1)} fps · 丢 ${this.#stats.droppedFrames} · 服务端 ${serverFps} fps · 实际 ${actualRate} / 限 ${cap} · 遥测 ${latency} · JPEG ${this.#stream.quality} · 间隔 ${this.#stream.intervalMillis} ms · WS ${connection?.open ? 'OPEN' : socketState}`
+    this.hud.textContent = `画布 ${this.#canvas.width}×${this.#canvas.height} · 远端 ${this.#viewport.width}×${this.#viewport.height} · 当前 ${this.#stats.lastFrameBytes} B · 均 ${average} · 收 ${this.#stats.fps.toFixed(1)} fps · 绘 ${this.#stats.renderFps.toFixed(1)} fps · 丢 ${this.#stats.droppedFrames} · 服务端 ${serverFps} fps · 实际 ${actualRate} / 限 ${cap} · 遥测 ${latency} · JPEG ${this.#stream.quality} · 间隔 ${this.#stream.intervalMillis} ms · WS ${socketState}`
   }
 
   #renderInfo() {
