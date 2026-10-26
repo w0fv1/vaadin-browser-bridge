@@ -57,12 +57,21 @@ const STYLES = `
 }
 .brs-tab:hover { background: var(--brs-hover); }
 .brs-tab.is-active { background: var(--brs-surface); color: var(--brs-text); }
-.brs-favicon { flex: none; width: 13px; height: 13px; border-radius: 4px; background: currentColor; opacity: .38; }
+.brs-tab.is-new { animation: brs-tab-in .18s ease-out; }
+.brs-favicon { flex: none; width: 13px; height: 13px; border-radius: 4px; background: currentColor; opacity: .38; transition: opacity .15s ease; }
+.brs-favicon.is-loading {
+  background: transparent; border-radius: 50%; opacity: .8;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: brs-spin .8s linear infinite;
+}
+.brs-favicon.is-error { background: #d93025; opacity: .95; }
 .brs-tab.is-active .brs-favicon { opacity: .62; }
+.brs-tab.is-active .brs-favicon.is-loading { opacity: .85; }
 .brs-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brs-close {
   flex: none; width: 18px; height: 18px; border-radius: 50%;
   display: grid; place-items: center; font-size: 14px; line-height: 1; opacity: 0;
+  transition: background .15s ease, opacity .15s ease;
 }
 .brs-tab:hover .brs-close, .brs-tab.is-active .brs-close { opacity: .55; }
 .brs-close:hover { background: var(--brs-hover); opacity: 1; }
@@ -74,7 +83,7 @@ const STYLES = `
 .brs-iconbtn:hover { background: var(--brs-hover); }
 .brs-iconbtn.is-on { background: var(--brs-hover); }
 .brs-iconbtn:disabled { opacity: .4; cursor: default; background: transparent; }
-.brs-tabbar > .brs-iconbtn, .brs-tabbar > .brs-newtab { width: 30px; height: 30px; margin-bottom: 2px; }
+.brs-tabs > .brs-iconbtn { width: 28px; height: 28px; margin: 0 0 3px 4px; flex: none; }
 .brs-omnibox {
   display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0;
   height: 32px; margin: 0 6px; padding: 0 2px 0 12px;
@@ -82,13 +91,12 @@ const STYLES = `
 }
 .brs-omnibox:focus-within { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26, 115, 232, .18); }
 .brs-address { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
-.brs-status { padding: 0 10px 6px; color: var(--brs-muted); font-size: 12px; background: var(--brs-surface); }
-.brs-status:empty { display: none; }
 .brs-stage {
   position: relative; flex: 1 1 auto; height: calc(100vh - 190px); min-height: 420px;
   display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--brs-stage);
 }
-.brs-canvas { display: block; max-width: 100%; max-height: 100%; background: var(--brs-stage); outline: none; cursor: default; }
+.brs-canvas { display: block; max-width: 100%; max-height: 100%; background: var(--brs-stage); outline: none; cursor: default; opacity: 0; transition: opacity .25s ease; }
+.brs-canvas.is-ready { opacity: 1; }
 .brs-hud {
   position: absolute; left: 8px; bottom: 8px; right: 8px; padding: 4px 10px;
   border-radius: 999px; background: rgba(0, 0, 0, .6); color: #e6e8eb;
@@ -111,6 +119,14 @@ const STYLES = `
 .brs-select { background: var(--brs-field); color: inherit; border: 1px solid var(--brs-line); border-radius: 6px; padding: 2px 6px; font: inherit; }
 .brs-note { color: var(--brs-muted); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .brs-info { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--brs-line); }
+.brs-menu:not([hidden]) { animation: brs-pop .16s ease-out; }
+.brs-iconbtn, .brs-tab, .brs-omnibox { transition: background .15s ease, color .15s ease, border-color .15s ease; }
+@keyframes brs-spin { to { transform: rotate(360deg); } }
+@keyframes brs-tab-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes brs-pop { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .brs *, .brs *::before, .brs *::after { animation: none !important; transition: none !important; }
+}
 `
 
 class BrowserStreamElement extends HTMLElement {
@@ -198,7 +214,7 @@ class BrowserStreamElement extends HTMLElement {
       this.#focusAddressOnTabChange = true
       this.#send({type: 'tab.open', url: 'about:blank'})
     })
-    tabbar.append(this.tabStrip, this.newTabButton)
+    tabbar.append(this.tabStrip)
 
     const toolbar = document.createElement('div')
     toolbar.className = 'brs-toolbar'
@@ -225,9 +241,6 @@ class BrowserStreamElement extends HTMLElement {
     omnibox.append(this.address, this.openButton)
     this.panelToggle = this.#iconButton('settings', '画面参数', () => this.#togglePanel())
     toolbar.append(this.backButton, this.forwardButton, this.reloadButton, omnibox, this.panelToggle)
-
-    this.navigationStatus = document.createElement('div')
-    this.navigationStatus.className = 'brs-status'
 
     this.panel = document.createElement('div')
     this.panel.className = 'brs-menu'
@@ -310,7 +323,7 @@ class BrowserStreamElement extends HTMLElement {
     stage.append(canvas, this.hud)
     this.#canvas = canvas
 
-    windowEl.append(tabbar, toolbar, this.navigationStatus, this.panel, stage)
+    windowEl.append(tabbar, toolbar, this.panel, stage)
     root.append(windowEl)
     this.append(root)
     this.#renderTabs()
@@ -532,7 +545,6 @@ class BrowserStreamElement extends HTMLElement {
     const activeChanged = this.#activeTabId !== previousActive
     if (active && (activeChanged || document.activeElement !== this.address)) this.address.value = active.url
     this.#renderTabs()
-    this.#renderNavigationStatus(active)
     this.#renderMetrics()
     this.#renderHud()
     this.#renderInfo()
@@ -611,43 +623,52 @@ class BrowserStreamElement extends HTMLElement {
   }
 
   #renderTabs() {
-    this.tabStrip.replaceChildren()
-    for (const tab of this.#tabs) {
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.className = `brs-tab${tab.id === this.#activeTabId ? ' is-active' : ''}`
-      button.title = tab.error || tab.url
-      const favicon = document.createElement('span')
-      favicon.className = 'brs-favicon'
-      const label = document.createElement('span')
-      label.className = 'brs-title'
-      label.textContent = tab.loading ? '加载中…' : (tab.title || tab.url || '新标签页')
-      const close = document.createElement('span')
-      close.className = 'brs-close'
-      close.textContent = '×'
-      if (this.#tabs.length === 1) close.hidden = true
-      close.addEventListener('click', event => {
-        event.stopPropagation()
-        this.#send({type: 'tab.close', tabId: tab.id})
-      })
-      button.append(favicon, label, close)
-      button.addEventListener('click', () => this.#send({type: 'tab.activate', tabId: tab.id}))
-      this.tabStrip.append(button)
+    const existing = new Map()
+    for (const button of this.tabStrip.querySelectorAll('.brs-tab')) {
+      existing.set(button.dataset.tabId, button)
     }
+    const ordered = []
+    for (const tab of this.#tabs) {
+      let button = existing.get(tab.id)
+      if (!button) {
+        button = this.#createTabButton(tab.id)
+        existing.set(tab.id, button)
+      }
+      button.classList.toggle('is-active', tab.id === this.#activeTabId)
+      button.title = tab.error || tab.url || ''
+      const favicon = button.querySelector('.brs-favicon')
+      favicon.className = `brs-favicon${tab.loading ? ' is-loading' : tab.error ? ' is-error' : ''}`
+      button.querySelector('.brs-title').textContent = tab.title || tab.url || '新标签页'
+      button.querySelector('.brs-close').hidden = this.#tabs.length === 1
+      ordered.push(button)
+    }
+    this.tabStrip.replaceChildren(...ordered, this.newTabButton)
+    const active = this.#tabs.find(tab => tab.id === this.#activeTabId)
+    const connected = this.#socket?.readyState === WebSocket.OPEN
+    this.backButton.disabled = !connected || !active?.canGoBack
+    this.forwardButton.disabled = !connected || !active?.canGoForward
+    this.reloadButton.disabled = !connected
   }
 
-  #renderNavigationStatus(active) {
-    if (!active) {
-      this.navigationStatus.textContent = '等待创建标签页'
-      return
-    }
-    if (active.error) {
-      this.navigationStatus.textContent = `导航失败：${active.error}`
-      this.navigationStatus.style.color = '#b42318'
-      return
-    }
-    this.navigationStatus.style.color = '#666'
-    this.navigationStatus.textContent = active.loading ? `加载中：${active.url}` : ''
+  #createTabButton(tabId) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'brs-tab is-new'
+    button.dataset.tabId = tabId
+    const favicon = document.createElement('span')
+    favicon.className = 'brs-favicon'
+    const label = document.createElement('span')
+    label.className = 'brs-title'
+    const close = document.createElement('span')
+    close.className = 'brs-close'
+    close.textContent = '×'
+    close.addEventListener('click', event => {
+      event.stopPropagation()
+      this.#send({type: 'tab.close', tabId})
+    })
+    button.append(favicon, label, close)
+    button.addEventListener('click', () => this.#send({type: 'tab.activate', tabId}))
+    return button
   }
 
   #renderMetrics() {
@@ -726,6 +747,7 @@ class BrowserStreamElement extends HTMLElement {
         if (!bitmap) return
         try {
           this.#canvas.getContext('2d').drawImage(bitmap, 0, 0, this.#canvas.width, this.#canvas.height)
+          this.#canvas.classList.add('is-ready')
           this.#stats.renderFrames += 1
         } finally {
           bitmap.close()
@@ -749,8 +771,6 @@ class BrowserStreamElement extends HTMLElement {
       }
     }
     this.address.value = target
-    this.navigationStatus.textContent = `正在打开：${target}`
-    this.navigationStatus.style.color = '#666'
     this.#send({type: 'tab.navigate', url: target})
   }
 

@@ -56,6 +56,8 @@ final class BrowserTab {
     private String url = "about:blank";
     private boolean loading;
     private String error = "";
+    private boolean canGoBack;
+    private boolean canGoForward;
     private volatile Consumer<String> cursorHandler;
 
     BrowserTab(
@@ -95,6 +97,22 @@ final class BrowserTab {
 
     void reload() {
         session.call("Page.reload", null);
+    }
+
+    boolean canGoBack() {
+        return canGoBack;
+    }
+
+    boolean canGoForward() {
+        return canGoForward;
+    }
+
+    void refreshHistory() {
+        JsonNode history = session.call("Page.getNavigationHistory", null);
+        int current = history.path("currentIndex").asInt();
+        int size = history.path("entries").size();
+        canGoBack = current > 0;
+        canGoForward = current >= 0 && current < size - 1;
     }
 
     void stepHistory(int delta) {

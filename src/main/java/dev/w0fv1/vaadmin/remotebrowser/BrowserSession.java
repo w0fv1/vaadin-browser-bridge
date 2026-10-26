@@ -541,6 +541,7 @@ final class BrowserSession {
         tab.onLoad(() -> execute(() -> {
             tab.markLoaded();
             tab.refresh();
+            tab.refreshHistory();
             publish();
         }));
         tabs.put(tab.id(), tab);
@@ -618,7 +619,9 @@ final class BrowserSession {
                     tab.title(),
                     tab.url(),
                     tab.loading(),
-                    tab.error()));
+                    tab.error(),
+                    tab.canGoBack(),
+                    tab.canGoForward()));
         }
         tabsSnapshot = List.copyOf(snapshot);
         version.incrementAndGet();
@@ -724,7 +727,7 @@ final class BrowserSession {
         return "https://" + value;
     }
 
-    public record TabState(String id, String title, String url, boolean loading, String error) {
+    public record TabState(String id, String title, String url, boolean loading, String error, boolean canGoBack, boolean canGoForward) {
     }
 
     public record TabsState(
