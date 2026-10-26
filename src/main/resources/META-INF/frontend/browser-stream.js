@@ -139,6 +139,9 @@ class BrowserStreamElement extends HTMLElement {
   #reconnectDelay = 0
   #lastMessageAt = 0
   #livenessTimer = null
+  #syncTimer = null
+  #requestedWidth = 0
+  #requestedHeight = 0
 
   connectedCallback() {
     this.#build()
@@ -349,7 +352,16 @@ class BrowserStreamElement extends HTMLElement {
     const frame = this.#canvas.parentElement.getBoundingClientRect()
     const width = Math.max(320, Math.round(frame.width))
     const height = Math.max(240, Math.round(frame.height))
+    if (this.#requestedWidth === width && this.#requestedHeight === height) return
+    this.#requestedWidth = width
+    this.#requestedHeight = height
     this.#send({type: 'viewport.resize', width, height})
+  }
+
+  #reconcileViewport(width, height, frame) {
+    if (Math.abs(frame.width - width) < 2 && Math.abs(frame.height - height) < 2) return
+    clearTimeout(this.#syncTimer)
+    this.#syncTimer = setTimeout(() => this.#syncViewport(), 150)
   }
 
   #applyViewport(width, height) {
@@ -363,6 +375,7 @@ class BrowserStreamElement extends HTMLElement {
     const scale = Math.min(frame.width / width, frame.height / height)
     this.#canvas.style.width = `${Math.max(1, Math.round(width * scale))}px`
     this.#canvas.style.height = `${Math.max(1, Math.round(height * scale))}px`
+    this.#reconcileViewport(width, height, frame)
     this.#renderHud()
   }
 
