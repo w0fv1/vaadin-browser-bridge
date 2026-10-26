@@ -20,11 +20,16 @@ class BrowserStreamElement extends HTMLElement {
   #qualityTimer = null
   #focusAddressOnTabChange = false
   #socketGeneration = 0
+  #reconnectTimer = null
+  #reconnectDelay = 0
+  #lastMessageAt = 0
+  #livenessTimer = null
 
   connectedCallback() {
     this.#build()
     this.#observeViewport()
     this.#connect()
+    this.#livenessTimer = setInterval(() => this.#checkLiveness(), 3000)
   }
 
   disconnectedCallback() {
@@ -32,6 +37,8 @@ class BrowserStreamElement extends HTMLElement {
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
     clearTimeout(this.#qualityTimer)
+    clearTimeout(this.#reconnectTimer)
+    clearInterval(this.#livenessTimer)
     if (this.#moveFrame) cancelAnimationFrame(this.#moveFrame)
     this.#moveFrame = 0
     this.#pendingMove = null
@@ -271,6 +278,8 @@ class BrowserStreamElement extends HTMLElement {
     socket.binaryType = 'arraybuffer'
     socket.onopen = () => {
       if (generation !== this.#socketGeneration) return
+      this.#reconnectDelay = 0
+      clearTimeout(this.#reconnectTimer)
       this.address.disabled = false
       this.openButton.disabled = false
       this.newTabButton.disabled = false
@@ -283,11 +292,13 @@ class BrowserStreamElement extends HTMLElement {
       this.address.disabled = true
       this.openButton.disabled = true
       this.newTabButton.disabled = true
+      this.#scheduleReconnect(generation)
       this.#renderHud()
       this.#renderInfo()
     }
     socket.onmessage = event => {
       if (generation !== this.#socketGeneration) return
+      this.#lastMessageAt = Date.now()
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)
         if (message.type === 'telemetry') this.#applyTelemetry(message)
@@ -298,6 +309,23 @@ class BrowserStreamElement extends HTMLElement {
     }
     this.#socket = socket
     this.#stats.windowStart = performance.now()
+  }
+
+  #scheduleReconnect(generation) {
+    if (!this.#sessionId) return
+    clearTimeout(this.#reconnectTimer)
+    this.#reconnectDelay = Math.min(5000, Math.max(400, this.#reconnectDelay * 2))
+    this.#reconnectTimer = setTimeout(() => {
+      if (generation !== this.#socketGeneration) return
+      this.#connect()
+    }, this.#reconnectDelay)
+  }
+
+  #checkLiveness() {
+    if (this.#socket?.readyState !== WebSocket.OPEN) return
+    if (!this.#lastMessageAt) return
+    if (Date.now() - this.#lastMessageAt < 8000) return
+    this.#socket.close()
   }
 
   #applyState(state) {
