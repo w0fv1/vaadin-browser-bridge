@@ -160,7 +160,21 @@ final class BrowserSession {
                 intervalMillis,
                 networkEnabled,
                 bandwidthBytesPerSecond,
-                latencyMillis);
+                latencyMillis,
+                activeViewportWidth(),
+                activeViewportHeight());
+    }
+
+    private int activeViewportWidth() {
+        BrowserTab tab = tabs.get(activeTabId);
+        int width = tab == null ? 0 : tab.viewportWidth();
+        return width > 0 ? width : viewportWidth;
+    }
+
+    private int activeViewportHeight() {
+        BrowserTab tab = tabs.get(activeTabId);
+        int height = tab == null ? 0 : tab.viewportHeight();
+        return height > 0 ? height : viewportHeight;
     }
 
     public BrowserInfo browserInfo() {
@@ -253,6 +267,7 @@ final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab != null) tab.resize(viewportWidth, viewportHeight);
+            publish();
         });
     }
 
@@ -696,7 +711,9 @@ final class BrowserSession {
             int intervalMillis,
             boolean networkEnabled,
             int bandwidthBytesPerSecond,
-            int latencyMillis) {
+            int latencyMillis,
+            int viewportWidth,
+            int viewportHeight) {
     }
 
     public record BrowserInfo(

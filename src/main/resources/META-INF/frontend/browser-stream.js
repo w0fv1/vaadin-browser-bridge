@@ -7,6 +7,7 @@ class BrowserStreamElement extends HTMLElement {
   #activeTabId = null
   #tabs = []
   #stream = {quality: 75, intervalMillis: 40, networkEnabled: false, bandwidthBytesPerSecond: 500 * 1024, latencyMillis: 0}
+  #viewport = {width: 0, height: 0}
   #telemetry = null
   #stats = {frames: 0, bytes: 0, renderFrames: 0, windowStart: 0, fps: 0, renderFps: 0, frameBytes: 0, lastFrameBytes: 0, droppedFrames: 0, serverLatencyMs: -1}
   #pending = null
@@ -155,12 +156,12 @@ class BrowserStreamElement extends HTMLElement {
     this.panel.append(networkRow, this.bandwidthInput, this.qualityInput.row, this.intervalInput.row, this.latencyInput.row, this.metrics)
 
     const canvasFrame = document.createElement('div')
-    canvasFrame.style.cssText = 'position:relative;display:block;width:100%;height:calc(100vh - 210px);min-height:480px;background:#111;overflow:hidden'
+    canvasFrame.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:calc(100vh - 210px);min-height:480px;background:#111;overflow:hidden'
     const canvas = document.createElement('canvas')
     canvas.width = 1280
     canvas.height = 720
     canvas.tabIndex = 0
-    canvas.style.cssText = 'display:block;width:100%;height:100%;background:#111;outline:none;cursor:default'
+    canvas.style.cssText = 'display:block;max-width:100%;max-height:100%;background:#111;outline:none;cursor:default'
     canvas.addEventListener('pointerdown', event => this.#pointerDown(event))
     canvas.addEventListener('pointermove', event => this.#pointerMove(event))
     canvas.addEventListener('pointerup', event => this.#pointerUp(event))
@@ -193,21 +194,29 @@ class BrowserStreamElement extends HTMLElement {
   #observeViewport() {
     if (!this.#canvas || this.#resizeObserver) return
     this.#resizeObserver = new ResizeObserver(() => this.#syncViewport())
-    this.#resizeObserver.observe(this.#canvas)
+    this.#resizeObserver.observe(this.#canvas.parentElement)
   }
 
   #syncViewport() {
     if (!this.#canvas) return
-    const box = this.#canvas.getBoundingClientRect()
-    const width = Math.max(320, Math.round(box.width))
-    const height = Math.max(240, Math.round(box.height))
+    const frame = this.#canvas.parentElement.getBoundingClientRect()
+    const width = Math.max(320, Math.round(frame.width))
+    const height = Math.max(240, Math.round(frame.height))
+    this.#send({type: 'viewport.resize', width, height})
+  }
+
+  #applyViewport(width, height) {
+    if (!this.#canvas || !width || !height) return
     if (this.#canvas.width !== width || this.#canvas.height !== height) {
       this.#canvas.width = width
       this.#canvas.height = height
       this.#renderMetrics()
-      this.#renderHud()
     }
-    this.#send({type: 'viewport.resize', width, height})
+    const frame = this.#canvas.parentElement.getBoundingClientRect()
+    const scale = Math.min(frame.width / width, frame.height / height)
+    this.#canvas.style.width = `${Math.max(1, Math.round(width * scale))}px`
+    this.#canvas.style.height = `${Math.max(1, Math.round(height * scale))}px`
+    this.#renderHud()
   }
 
   #slider(min, max, step, value, label, onChange) {
@@ -295,6 +304,8 @@ class BrowserStreamElement extends HTMLElement {
     const previousActive = this.#activeTabId
     this.#tabs = state.tabs || []
     this.#activeTabId = state.activeTabId
+    this.#viewport = {width: state.viewportWidth || 0, height: state.viewportHeight || 0}
+    this.#applyViewport(this.#viewport.width, this.#viewport.height)
     this.#stream = {
       quality: state.quality,
       intervalMillis: state.intervalMillis,
@@ -344,7 +355,7 @@ class BrowserStreamElement extends HTMLElement {
     const cap = stream?.networkEnabled ? `${this.#bytes(stream.bandwidthBytesPerSecond)}/s` : '不限速'
     const latency = this.#stats.serverLatencyMs >= 0 ? `${this.#stats.serverLatencyMs} ms` : '--'
     const average = this.#stats.frameBytes ? `${(this.#stats.frameBytes / 1024).toFixed(1)} KB` : '--'
-    this.hud.textContent = `${this.#canvas.width}×${this.#canvas.height} · 当前 ${this.#stats.lastFrameBytes} B · 均 ${average} · 收 ${this.#stats.fps.toFixed(1)} fps · 绘 ${this.#stats.renderFps.toFixed(1)} fps · 丢 ${this.#stats.droppedFrames} · 服务端 ${serverFps} fps · 实际 ${actualRate} / 限 ${cap} · 遥测 ${latency} · JPEG ${this.#stream.quality} · 间隔 ${this.#stream.intervalMillis} ms · WS ${connection?.open ? 'OPEN' : socketState}`
+    this.hud.textContent = `画布 ${this.#canvas.width}×${this.#canvas.height} · 远端 ${this.#viewport.width}×${this.#viewport.height} · 当前 ${this.#stats.lastFrameBytes} B · 均 ${average} · 收 ${this.#stats.fps.toFixed(1)} fps · 绘 ${this.#stats.renderFps.toFixed(1)} fps · 丢 ${this.#stats.droppedFrames} · 服务端 ${serverFps} fps · 实际 ${actualRate} / 限 ${cap} · 遥测 ${latency} · JPEG ${this.#stream.quality} · 间隔 ${this.#stream.intervalMillis} ms · WS ${connection?.open ? 'OPEN' : socketState}`
   }
 
   #renderInfo() {
