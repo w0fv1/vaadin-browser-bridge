@@ -504,7 +504,7 @@ class BrowserStreamElement extends HTMLElement {
 
   #updateOverlay() {
     if (!this.overlay) return
-    if (this.#everDrew) {
+    if (this.#everDrew && !this.#deadSession) {
       this.overlay.hidden = true
       return
     }
