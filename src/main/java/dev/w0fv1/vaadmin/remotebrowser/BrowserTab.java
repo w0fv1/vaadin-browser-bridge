@@ -188,6 +188,7 @@ final class BrowserTab {
             applyTargetInfo(session.call("Target.getTargetInfo", null).path("targetInfo"));
         } catch (RuntimeException ignored) {
         }
+        if (!previousUrl.equals(url)) refreshHistory();
         return !previousUrl.equals(url) || !previousTitle.equals(title);
     }
 

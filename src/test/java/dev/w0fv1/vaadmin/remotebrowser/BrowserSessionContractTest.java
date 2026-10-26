@@ -107,6 +107,7 @@ final class BrowserSessionContractTest {
             await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
                 session.capture();
                 assertThat(session.browserInfo().activeUrl()).doesNotEndWith("/second");
+                assertThat(session.state().tabs().getFirst().canGoForward()).isTrue();
             });
 
             session.historyForward();
