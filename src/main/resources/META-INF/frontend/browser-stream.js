@@ -29,7 +29,6 @@ class BrowserStreamElement extends HTMLElement {
     this.#build()
     this.#observeViewport()
     this.#connect()
-    this.#livenessTimer = setInterval(() => this.#checkLiveness(), 3000)
   }
 
   disconnectedCallback() {
@@ -279,11 +278,13 @@ class BrowserStreamElement extends HTMLElement {
     socket.onopen = () => {
       if (generation !== this.#socketGeneration) return
       this.#reconnectDelay = 0
+      this.#lastMessageAt = Date.now()
       clearTimeout(this.#reconnectTimer)
       this.address.disabled = false
       this.openButton.disabled = false
       this.newTabButton.disabled = false
       this.#syncViewport()
+      this.#armLiveness(generation)
       this.#renderHud()
       this.#renderInfo()
     }
@@ -321,15 +322,25 @@ class BrowserStreamElement extends HTMLElement {
     }, this.#reconnectDelay)
   }
 
-  #checkLiveness() {
-    if (!this.#socket || !this.#lastMessageAt) return
-    if (Date.now() - this.#lastMessageAt < 8000) return
+  #armLiveness(generation) {
+    clearInterval(this.#livenessTimer)
+    this.#livenessTimer = setInterval(() => {
+      if (generation !== this.#socketGeneration) return
+      if (this.#socket?.readyState !== WebSocket.OPEN) return
+      if (!this.#lastMessageAt) return
+      if (Date.now() - this.#lastMessageAt < 8000) return
+      clearInterval(this.#livenessTimer)
+      this.#dropAndReconnect()
+    }, 3000)
+  }
+
+  #dropAndReconnect() {
     const stale = this.#socket
     this.#socket = null
     this.#socketGeneration += 1
     const generation = this.#socketGeneration
     try {
-      stale.close()
+      stale?.close()
     } catch (ignored) {
     }
     this.#scheduleReconnect(generation)
