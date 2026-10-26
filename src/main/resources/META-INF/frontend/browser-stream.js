@@ -446,6 +446,8 @@ class BrowserStreamElement extends HTMLElement {
       this.#lastMessageAt = Date.now()
       clearTimeout(this.#reconnectTimer)
       this.#setEnabled(true)
+      this.#requestedWidth = 0
+      this.#requestedHeight = 0
       this.#syncViewport()
       this.#armLiveness(generation)
       this.#renderHud()
