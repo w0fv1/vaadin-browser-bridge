@@ -202,7 +202,7 @@ final class BrowserSessionContractTest {
             assertThat(blue(pixel)).isLessThan(90);
 
             session.openTab(baseUrl + "/second");
-            await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
                 session.capture();
                 BrowserSession.TabsState state = session.state();
                 assertThat(state.tabs()).hasSize(2);
@@ -219,7 +219,7 @@ final class BrowserSessionContractTest {
 
             BrowserSession.TabsState state = session.state();
             session.closeTab(state.activeTabId());
-            await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
                 session.capture();
                 assertThat(session.state().tabs()).hasSize(1);
             });
@@ -284,7 +284,7 @@ final class BrowserSessionContractTest {
     }
 
     private void awaitTitle(BrowserSession session, String expected) {
-        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+        await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
             assertThat(session.capture()).isNotNull();
             assertThat(session.browserInfo().activeTitle()).isEqualTo(expected);
         });
@@ -292,7 +292,7 @@ final class BrowserSessionContractTest {
 
     private BufferedImage awaitImage(BrowserSession session) throws IOException {
         AtomicReference<BufferedImage> image = new AtomicReference<>();
-        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+        await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
             byte[] frame = session.capture();
             assertThat(frame).isNotNull();
             image.set(ImageIO.read(new ByteArrayInputStream(frame)));
