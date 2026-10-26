@@ -171,6 +171,13 @@ class BrowserStreamElement extends HTMLElement {
       if (event.data) this.#send({type: 'text', text: event.data})
     })
     canvas.addEventListener('contextmenu', event => event.preventDefault())
+    document.addEventListener('paste', event => {
+      if (document.activeElement !== this.#canvas) return
+      const text = event.clipboardData?.getData('text/plain')
+      if (!text) return
+      event.preventDefault()
+      this.#send({type: 'text', text})
+    })
     this.hud = document.createElement('div')
     this.hud.style.cssText = 'position:absolute;left:8px;top:8px;right:8px;min-height:20px;padding:3px 6px;background:rgba(0,0,0,.62);color:#fff;font:12px/1.4 monospace;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'
     canvasFrame.append(canvas, this.hud)
@@ -282,6 +289,8 @@ class BrowserStreamElement extends HTMLElement {
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)
         if (message.type === 'telemetry') this.#applyTelemetry(message)
+        else if (message.type === 'cursor') this.#applyCursor(message.value)
+        else if (message.type === 'clipboard') this.#copyToLocal(message.text)
         else this.#applyState(message)
       } else this.#renderChunk(event.data)
     }
@@ -623,6 +632,35 @@ class BrowserStreamElement extends HTMLElement {
       repeat: event.repeat,
       ...this.#modifiers(event),
     })
+    if ((event.ctrlKey || event.metaKey) && ['c', 'x'].includes(event.key.toLowerCase())) {
+      setTimeout(() => this.#send({type: 'clipboard.read'}), 150)
+    }
+  }
+
+  #applyCursor(value) {
+    if (!this.#canvas) return
+    const raw = typeof value === 'string' ? value.trim() : ''
+    const fallback = raw.includes('url(') ? (raw.split(',').pop() || 'default').trim() : raw
+    this.#canvas.style.cursor = /^[a-z-]+$/.test(fallback) ? fallback : 'default'
+  }
+
+  async #copyToLocal(text) {
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch (ignored) {
+    }
+    const area = document.createElement('textarea')
+    area.value = text
+    area.style.cssText = 'position:fixed;opacity:0;pointer-events:none'
+    document.body.append(area)
+    area.select()
+    try {
+      document.execCommand('copy')
+    } finally {
+      area.remove()
+    }
   }
 
   #send(value) {

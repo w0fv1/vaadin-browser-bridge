@@ -16,7 +16,8 @@ public record BrowserRuntimeProperties(
         Boolean enabled,
         Boolean sandbox,
         String websocketPath,
-        List<String> allowedOriginPatterns) {
+        List<String> allowedOriginPatterns,
+        BrowserMediaPolicy mediaPolicy) {
     static final String DEFAULT_WEBSOCKET_PATH = "/browser-stream";
 
     @ConstructorBinding
@@ -52,6 +53,9 @@ public record BrowserRuntimeProperties(
         }
         websocketPath = normalizePath(websocketPath);
         allowedOriginPatterns = allowedOriginPatterns == null ? List.of() : List.copyOf(allowedOriginPatterns);
+        if (mediaPolicy == null) {
+            mediaPolicy = BrowserMediaPolicy.BLOCK;
+        }
     }
 
     public BrowserRuntimeProperties(
@@ -59,7 +63,7 @@ public record BrowserRuntimeProperties(
             BrowserChannel channel,
             Path profileRoot,
             Path executable) {
-        this(mode, channel, profileRoot, executable, null, null, null, null);
+        this(mode, channel, profileRoot, executable, null, null, null, null, null);
     }
 
     private static String normalizePath(String path) {

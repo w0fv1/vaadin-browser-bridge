@@ -5,8 +5,47 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.Base64;
+import java.util.function.Consumer;
 
 final class BrowserTab {
+    static final String CURSOR_BINDING = "__vaadminCursor";
+    private static final String CURSOR_SCRIPT = """
+            (() => {
+                let last = '';
+                let lastAt = 0;
+                const report = event => {
+                    const now = performance.now();
+                    if (now - lastAt < 50) return;
+                    lastAt = now;
+                    const element = document.elementFromPoint(event.clientX, event.clientY);
+                    const cursor = element ? getComputedStyle(element).cursor : '';
+                    const value = cursor && cursor !== 'auto' ? cursor : 'auto';
+                    if (value === last) return;
+                    last = value;
+                    if (typeof window.__vaadminCursor === 'function') window.__vaadminCursor(value);
+                };
+                document.addEventListener('mousemove', report, true);
+                document.addEventListener('mousedown', report, true);
+            })();
+            """;
+    private static final String BLOCK_MEDIA_SCRIPT = """
+            (() => {
+                const suspend = element => {
+                    if (!element) return;
+                    try { element.pause(); } catch (ignored) {}
+                    try { element.muted = true; } catch (ignored) {}
+                };
+                const suspendAll = () => document.querySelectorAll('video,audio').forEach(suspend);
+                HTMLMediaElement.prototype.play = function () {
+                    suspend(this);
+                    return Promise.resolve();
+                };
+                document.addEventListener('play', event => suspend(event.target), true);
+                document.addEventListener('loadeddata', suspendAll, true);
+                document.addEventListener('DOMContentLoaded', suspendAll, true);
+            })();
+            """;
+
     private final String id;
     private final String targetId;
     private final CdpSession session;
@@ -17,6 +56,7 @@ final class BrowserTab {
     private String url = "about:blank";
     private boolean loading;
     private String error = "";
+    private volatile Consumer<String> cursorHandler;
 
     BrowserTab(
             String id,
@@ -25,7 +65,8 @@ final class BrowserTab {
             CdpConnection connection,
             ObjectMapper mapper,
             BrowserMode mode,
-            double deviceScaleFactor) {
+            double deviceScaleFactor,
+            BrowserMediaPolicy mediaPolicy) {
         this.id = id;
         this.targetId = targetId;
         this.session = session;
@@ -33,7 +74,46 @@ final class BrowserTab {
         this.mapper = mapper;
         this.viewport = new BrowserViewport(mode, targetId, session, connection, mapper, deviceScaleFactor);
         session.call("Page.enable", null);
+        session.call("Runtime.enable", null);
+        if (mode.headless()) {
+            ObjectNode focus = mapper.createObjectNode();
+            focus.put("enabled", true);
+            session.call("Emulation.setFocusEmulationEnabled", focus);
+        }
+        if (mediaPolicy.blocksPlayback()) {
+            ObjectNode parameters = mapper.createObjectNode();
+            parameters.put("source", BLOCK_MEDIA_SCRIPT);
+            session.call("Page.addScriptToEvaluateOnNewDocument", parameters);
+        }
         session.on("Page.javascriptDialogOpening", event -> dismissDialog());
+        trackCursor();
+    }
+
+    void onCursor(Consumer<String> handler) {
+        cursorHandler = handler;
+    }
+
+    JsonNode evaluate(String expression) {
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("expression", expression);
+        parameters.put("returnByValue", true);
+        parameters.put("awaitPromise", true);
+        parameters.put("userGesture", true);
+        return session.call("Runtime.evaluate", parameters).path("result").path("value");
+    }
+
+    private void trackCursor() {
+        ObjectNode binding = mapper.createObjectNode();
+        binding.put("name", CURSOR_BINDING);
+        session.call("Runtime.addBinding", binding);
+        ObjectNode script = mapper.createObjectNode();
+        script.put("source", CURSOR_SCRIPT);
+        session.call("Page.addScriptToEvaluateOnNewDocument", script);
+        session.on("Runtime.bindingCalled", event -> {
+            if (!CURSOR_BINDING.equals(event.path("name").asString(""))) return;
+            Consumer<String> handler = cursorHandler;
+            if (handler != null) handler.accept(event.path("payload").asString("auto"));
+        });
     }
 
     String id() {

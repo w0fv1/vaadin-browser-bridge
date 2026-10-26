@@ -34,9 +34,49 @@ final class BrowserRuntimeTest {
                 "--disable-renderer-backgrounding",
                 "--disable-background-timer-throttling",
                 "--disable-blink-features=AutomationControlled",
-                "--window-size=1280,720");
+                "--window-size=1280,720",
+                "--disable-extensions",
+                "--disable-sync",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-default-apps",
+                "--disable-domain-reliability",
+                "--disable-breakpad",
+                "--no-pings",
+                "--metrics-recording-only",
+                "--disable-features=Translate,MediaRouter,OptimizationHints",
+                "--mute-audio",
+                "--autoplay-policy=user-gesture-required");
         assertThat(arguments).noneMatch(argument -> argument.startsWith("--enable-automation"));
         assertThat(arguments).noneMatch(argument -> argument.contains("no-sandbox"));
+    }
+
+    @Test
+    void mediaPolicyControlsAudioAndPlaybackFlags() {
+        assertThat(argumentsWith(BrowserMediaPolicy.ALLOW))
+                .noneMatch(argument -> argument.equals("--mute-audio"))
+                .noneMatch(argument -> argument.startsWith("--autoplay-policy="));
+        assertThat(argumentsWith(BrowserMediaPolicy.MUTE))
+                .contains("--mute-audio")
+                .noneMatch(argument -> argument.startsWith("--autoplay-policy="));
+        assertThat(argumentsWith(BrowserMediaPolicy.BLOCK))
+                .contains("--mute-audio", "--autoplay-policy=user-gesture-required");
+    }
+
+    private List<String> argumentsWith(BrowserMediaPolicy mediaPolicy) {
+        BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
+                BrowserMode.HEADED,
+                BrowserChannel.CHROME,
+                profileRoot,
+                null,
+                null,
+                null,
+                null,
+                null,
+                mediaPolicy);
+        return new BrowserRuntime(properties, new ObjectMapper()).arguments(
+                profileRoot.resolve("media"),
+                BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT));
     }
 
     @Test
@@ -74,7 +114,7 @@ final class BrowserRuntimeTest {
                 .noneMatch(argument -> argument.equals("--no-sandbox"));
 
         BrowserRuntimeProperties properties = new BrowserRuntimeProperties(
-                BrowserMode.HEADLESS, BrowserChannel.CHROME, profileRoot, null, true, false, null, null);
+                BrowserMode.HEADLESS, BrowserChannel.CHROME, profileRoot, null, true, false, null, null, null);
         assertThat(new BrowserRuntime(properties, new ObjectMapper()).arguments(
                         profileRoot.resolve("unsandboxed"),
                         BrowserEnvironmentProfile.nativeProfile(BrowserProfileId.DEFAULT)))

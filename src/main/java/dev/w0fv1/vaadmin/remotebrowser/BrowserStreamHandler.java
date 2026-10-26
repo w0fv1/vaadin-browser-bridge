@@ -2,10 +2,12 @@ package dev.w0fv1.vaadmin.remotebrowser;
 
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
@@ -13,9 +15,12 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 final class BrowserStreamHandler extends AbstractWebSocketHandler {
     private static final long TELEMETRY_INTERVAL_NANOS = 500_000_000L;
+    private static final int IDLE_INTERVAL_MILLIS = 500;
+    private static final int IDLE_THRESHOLD = 2;
     private static final int FRAME_MAGIC = 0x42535452;
     private static final int FRAME_HEADER_BYTES = 12;
     private static final int FRAME_CHUNK_BYTES = 16 * 1024;
@@ -51,6 +56,7 @@ final class BrowserStreamHandler extends AbstractWebSocketHandler {
                         input.path("deltaY").asDouble());
                 case "key" -> browser.key(BrowserKeyInput.parse(input));
                 case "text" -> browser.insertText(input.path("text").asString(""));
+                case "clipboard.read" -> sendClipboard(socket, browser);
                 case "tab.open" -> browser.openTab(input.path("url").asString("about:blank"));
                 case "tab.activate" -> browser.activateTab(input.path("tabId").asString(""));
                 case "tab.close" -> browser.closeTab(input.path("tabId").asString(""));
@@ -71,31 +77,72 @@ final class BrowserStreamHandler extends AbstractWebSocketHandler {
         }
     }
 
+    private void sendClipboard(WebSocketSession socket, BrowserSession browser) {
+        ObjectNode message = mapper.createObjectNode();
+        message.put("type", "clipboard");
+        message.put("text", browser.clipboardText());
+        try {
+            send(socket, new TextMessage(mapper.writeValueAsString(message)));
+        } catch (Exception failure) {
+            closeQuietly(socket);
+        }
+    }
+
+    private static void send(WebSocketSession socket, WebSocketMessage<?> message) throws Exception {
+        synchronized (socket) {
+            socket.sendMessage(message);
+        }
+    }
+
+    private static void closeQuietly(WebSocketSession socket) {
+        try {
+            socket.close();
+        } catch (Exception ignored) {
+        }
+    }
+
     private void stream(WebSocketSession socket, BrowserSession browser) {
         long sentVersion = -1;
         long nextTelemetry = 0;
+        byte[] lastFrame = null;
+        int idleFrames = 0;
+        String sentCursor = "";
         StreamMetrics metrics = new StreamMetrics();
         TrafficShaper shaper = new TrafficShaper();
         try {
             while (socket.isOpen()) {
                 BrowserSession.TabsState state = browser.state();
                 if (state.version() != sentVersion) {
-                    socket.sendMessage(new TextMessage(mapper.writeValueAsString(state)));
+                    send(socket, new TextMessage(mapper.writeValueAsString(state)));
                     sentVersion = state.version();
                 }
                 if (browser.canCapture()) {
                     byte[] frame = browser.capture();
                     if (frame != null) {
-                        sendFrame(socket, frame, shaper, state, metrics);
+                        if (lastFrame != null && Arrays.equals(frame, lastFrame)) {
+                            idleFrames++;
+                        } else {
+                            lastFrame = frame;
+                            idleFrames = 0;
+                            sendFrame(socket, frame, shaper, state, metrics);
+                        }
                     }
+                }
+                String cursor = browser.cursor();
+                if (!cursor.equals(sentCursor)) {
+                    sentCursor = cursor;
+                    ObjectNode message = mapper.createObjectNode();
+                    message.put("type", "cursor");
+                    message.put("value", cursor);
+                    send(socket, new TextMessage(mapper.writeValueAsString(message)));
                 }
                 long now = System.nanoTime();
                 if (now >= nextTelemetry) {
-                    socket.sendMessage(new TextMessage(mapper.writeValueAsString(
+                    send(socket, new TextMessage(mapper.writeValueAsString(
                             telemetry(socket, browser, metrics))));
                     nextTelemetry = now + TELEMETRY_INTERVAL_NANOS;
                 }
-                Thread.sleep(state.intervalMillis());
+                Thread.sleep(idleFrames >= IDLE_THRESHOLD ? IDLE_INTERVAL_MILLIS : state.intervalMillis());
             }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -132,7 +179,7 @@ final class BrowserStreamHandler extends AbstractWebSocketHandler {
                     state.networkEnabled(),
                     state.bandwidthBytesPerSecond(),
                     state.latencyMillis());
-            socket.sendMessage(new BinaryMessage(message));
+            send(socket, new BinaryMessage(message));
             metrics.recordChunk(message.length);
         }
         metrics.recordFrame(frame.length);
