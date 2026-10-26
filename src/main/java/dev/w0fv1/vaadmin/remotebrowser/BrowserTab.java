@@ -213,14 +213,6 @@ final class BrowserTab {
         viewport.resize(width, height);
     }
 
-    double mapX(double x, int viewportWidth) {
-        return viewport.mapX(x, viewportWidth);
-    }
-
-    double mapY(double y, int viewportHeight) {
-        return viewport.mapY(y, viewportHeight);
-    }
-
     byte[] capture(int quality) {
         ObjectNode parameters = mapper.createObjectNode();
         parameters.put("format", "jpeg");

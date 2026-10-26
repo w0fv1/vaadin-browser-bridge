@@ -333,8 +333,8 @@ final class BrowserSession {
         executeInput(input, () -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.move(mapX(tab, input.x()), mapY(tab, input.y()), input);
-            tab.press(mapX(tab, input.x()), mapY(tab, input.y()), input);
+            tab.move(input.x(), input.y(), input);
+            tab.press(input.x(), input.y(), input);
             pressedButton = input.button();
             pressedTabId = tab.id();
         });
@@ -345,8 +345,8 @@ final class BrowserSession {
         executeInput(input, () -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.move(mapX(tab, input.x()), mapY(tab, input.y()), input);
-            tab.release(mapX(tab, input.x()), mapY(tab, input.y()), input);
+            tab.move(input.x(), input.y(), input);
+            tab.release(input.x(), input.y(), input);
             pressedButton = null;
             pressedTabId = null;
         });
@@ -356,7 +356,7 @@ final class BrowserSession {
         String tabId = activeTabId;
         executeInput(input, () -> {
             BrowserTab tab = tabs.get(tabId);
-            if (tab != null) tab.click(mapX(tab, input.x()), mapY(tab, input.y()), input);
+            if (tab != null) tab.click(input.x(), input.y(), input);
         });
     }
 
@@ -365,7 +365,7 @@ final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.wheel(mapX(tab, x), mapY(tab, y), deltaX, deltaY);
+            tab.wheel(x, y, deltaX, deltaY);
         });
     }
 
@@ -396,7 +396,7 @@ final class BrowserSession {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
             BrowserInput input = new BrowserInput("up", 0, 0, 0, button, 0, 1, Set.of());
-            tab.release(mapX(tab, 0), mapY(tab, 0), input);
+            tab.release(0, 0, input);
         });
     }
 
@@ -457,7 +457,7 @@ final class BrowserSession {
             BrowserTab tab = tabs.get(activeTabId);
             if (tab != null) {
                 try {
-                    tab.move(mapX(tab, latest.x()), mapY(tab, latest.y()), latest);
+                    tab.move(latest.x(), latest.y(), latest);
                 } catch (RuntimeException failure) {
                     recordFailure("input", failure);
                 }
@@ -466,14 +466,6 @@ final class BrowserSession {
         }
         moveScheduled.set(false);
         if (pendingMove.get() != null) scheduleMove();
-    }
-
-    private double mapX(BrowserTab tab, double x) {
-        return tab.mapX(x, viewportWidth);
-    }
-
-    private double mapY(BrowserTab tab, double y) {
-        return tab.mapY(y, viewportHeight);
     }
 
     private BrowserTab createTab(String url) {

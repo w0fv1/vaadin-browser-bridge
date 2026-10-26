@@ -49,16 +49,6 @@ final class BrowserViewport {
         return clientHeight;
     }
 
-    double mapX(double x, int viewportWidth) {
-        if (viewportWidth <= 0 || clientWidth <= 0) return x;
-        return x * clientWidth / viewportWidth;
-    }
-
-    double mapY(double y, int viewportHeight) {
-        if (viewportHeight <= 0 || clientHeight <= 0) return y;
-        return y * clientHeight / viewportHeight;
-    }
-
     private void resizeHeadless(int targetWidth, int targetHeight) {
         if (appliedWidth == targetWidth && appliedHeight == targetHeight) return;
         ObjectNode parameters = mapper.createObjectNode();
