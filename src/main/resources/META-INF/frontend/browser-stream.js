@@ -171,13 +171,6 @@ class BrowserStreamElement extends HTMLElement {
       if (event.data) this.#send({type: 'text', text: event.data})
     })
     canvas.addEventListener('contextmenu', event => event.preventDefault())
-    document.addEventListener('paste', event => {
-      if (document.activeElement !== this.#canvas) return
-      const text = event.clipboardData?.getData('text/plain')
-      if (!text) return
-      event.preventDefault()
-      this.#send({type: 'text', text})
-    })
     this.hud = document.createElement('div')
     this.hud.style.cssText = 'position:absolute;left:8px;top:8px;right:8px;min-height:20px;padding:3px 6px;background:rgba(0,0,0,.62);color:#fff;font:12px/1.4 monospace;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'
     canvasFrame.append(canvas, this.hud)
@@ -623,6 +616,12 @@ class BrowserStreamElement extends HTMLElement {
   #key(event) {
     event.preventDefault()
     if (event.isComposing) return
+    const command = event.ctrlKey || event.metaKey
+    const key = event.key.toLowerCase()
+    if (command && key === 'v') {
+      this.#pasteFromLocal()
+      return
+    }
     this.#send({
       type: 'key',
       key: event.key,
@@ -632,8 +631,16 @@ class BrowserStreamElement extends HTMLElement {
       repeat: event.repeat,
       ...this.#modifiers(event),
     })
-    if ((event.ctrlKey || event.metaKey) && ['c', 'x'].includes(event.key.toLowerCase())) {
+    if (command && ['c', 'x'].includes(key)) {
       setTimeout(() => this.#send({type: 'clipboard.read'}), 150)
+    }
+  }
+
+  async #pasteFromLocal() {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) this.#send({type: 'text', text})
+    } catch (ignored) {
     }
   }
 
