@@ -114,6 +114,14 @@ final class CdpConnection implements AutoCloseable {
         write(mapper.writeValueAsString(message));
     }
 
+    void send(String sessionId, String method, ObjectNode parameters) {
+        ObjectNode message = mapper.createObjectNode();
+        message.put("method", method);
+        message.put("sessionId", sessionId);
+        if (parameters != null && !parameters.isEmpty()) message.set("params", parameters);
+        write(mapper.writeValueAsString(message));
+    }
+
     void on(String method, Consumer<JsonNode> handler) {
         handlers.computeIfAbsent(method, key -> new CopyOnWriteArrayList<>()).add(handler);
     }

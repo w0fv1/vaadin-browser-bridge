@@ -61,6 +61,7 @@ final class BrowserSession {
     private final BrowserProfileLease profileLease;
     private final ThreadPoolExecutor inputLane;
     private final ExecutorService captureLane;
+    private final ExecutorService navigationLane;
     private final AtomicBoolean capturePending = new AtomicBoolean();
     private final AtomicReference<BrowserInput> pendingMove = new AtomicReference<>();
     private final AtomicBoolean moveScheduled = new AtomicBoolean();
@@ -114,6 +115,8 @@ final class BrowserSession {
                 new ThreadPoolExecutor.AbortPolicy());
         this.captureLane = Executors.newSingleThreadExecutor(
                 runnable -> daemon(runnable, "browser-capture-" + id));
+        this.navigationLane = Executors.newSingleThreadExecutor(
+                runnable -> daemon(runnable, "browser-navigation-" + id));
     }
 
     public String id() {
@@ -302,11 +305,13 @@ final class BrowserSession {
 
     public void navigateActive(String url) {
         String tabId = activeTabId;
+        String target = normalizeUrl(url);
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.navigate(normalizeUrl(url));
+            tab.startNavigation(target);
             publish();
+            navigateLater(() -> tab.navigate(target));
         });
     }
 
@@ -322,7 +327,7 @@ final class BrowserSession {
         String tabId = activeTabId;
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
-            if (tab != null) tab.reload();
+            if (tab != null) navigateLater(tab::reload);
         });
     }
 
@@ -331,9 +336,25 @@ final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
-            tab.stepHistory(delta);
-            publish();
+            navigateLater(() -> {
+                tab.stepHistory(delta);
+                publish();
+            });
         });
+    }
+
+    private void navigateLater(Runnable action) {
+        try {
+            navigationLane.submit(() -> {
+                try {
+                    action.run();
+                } catch (RuntimeException failure) {
+                    recordFailure("navigate", failure);
+                }
+            });
+        } catch (RejectedExecutionException failure) {
+            recordFailure("navigate", failure);
+        }
     }
 
     public void configure(
@@ -473,6 +494,7 @@ final class BrowserSession {
             }
         }
         captureLane.shutdownNow();
+        navigationLane.shutdownNow();
         profileLease.close();
     }
 

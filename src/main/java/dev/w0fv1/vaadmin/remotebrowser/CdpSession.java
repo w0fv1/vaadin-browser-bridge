@@ -10,6 +10,10 @@ record CdpSession(CdpConnection connection, String sessionId) {
         return connection.call(sessionId, method, parameters);
     }
 
+    void send(String method, ObjectNode parameters) {
+        connection.send(sessionId, method, parameters);
+    }
+
     void on(String method, Consumer<JsonNode> handler) {
         connection.on(sessionId, method, handler);
     }

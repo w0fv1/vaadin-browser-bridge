@@ -208,18 +208,12 @@ final class BrowserTab {
         startNavigation(target);
         ObjectNode parameters = mapper.createObjectNode();
         parameters.put("url", target);
-        String failure = session.call("Page.navigate", parameters).path("errorText").asString("");
-        if (!failure.isEmpty()) markNavigationFailure(failure);
+        session.call("Page.navigate", parameters);
     }
 
     void markLoaded() {
         loading = false;
         error = "";
-    }
-
-    void markNavigationFailure(String message) {
-        loading = false;
-        error = message;
     }
 
     void activate() {
