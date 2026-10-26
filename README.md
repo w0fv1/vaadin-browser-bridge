@@ -85,6 +85,7 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 - 剪贴板：客户端 `Ctrl+C` / `Ctrl+X` 读回远端剪贴板写入本地，本地 `Ctrl+V` 直接注入远端输入（`clipboard.read` 与 `text` 消息）。
 - 静帧：连续两帧相同时抓帧间隔回落到 `BrowserStreamHandler.IDLE_INTERVAL_MILLIS`，画面一变化立刻恢复。
 - 启动参数固定关闭扩展、同步、组件更新与后台联网，削减无关内存与磁盘占用（`BrowserRuntime.HOSTED_FLAGS`）。
+- 关闭常规标签页会关闭对应的真实页面；关闭最后一个标签页时改为把该标签重置为 `about:blank`，因为 Chrome 在最后一个页面关闭后会退出整个浏览器进程（`BrowserSession.closeTab`）。
 
 
 ## Linux 与容器
@@ -95,6 +96,7 @@ WebSocket 默认只接受同源连接；需要跨源时显式配置 `browser.rem
 - 中文字体（如 `fonts-noto-cjk`）与常见运行库，否则页面文字与视频会缺字
 - 以 root 或容器内运行时 Chrome 会拒绝启动，此时显式设置 `browser.remote.sandbox=false`（等价 `--no-sandbox`，会削弱进程隔离，只在这种环境用）
 - 进程目录可写：`browser.remote.profile-root` 需要有足够空间放 Chrome 的用户数据与隐私窗口的一次性目录
+- `gradlew` 以 `100755` 入库；权限若在解压、复制或跨平台中转时丢失，用 `chmod +x gradlew` 恢复，否则第一条命令就是 `Permission denied`
 
 ## 浏览器环境画像
 

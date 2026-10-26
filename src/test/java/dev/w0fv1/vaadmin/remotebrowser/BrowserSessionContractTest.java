@@ -85,6 +85,27 @@ final class BrowserSessionContractTest {
     }
 
     @Test
+    void closingLastTabResetsItInsteadOfKillingBrowser() throws Exception {
+        BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
+        try (RemoteBrowserSession lease = manager.open(new BrowserProfileId("last-tab"), baseUrl)) {
+            BrowserSession session = lease.session();
+            awaitTitle(session, "state:1280x720:none");
+
+            session.closeTab(session.state().activeTabId());
+
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
+                BrowserSession.TabsState state = session.state();
+                assertThat(state.tabs()).hasSize(1);
+                assertThat(state.tabs().getFirst().url()).isEqualTo("about:blank");
+                assertThat(session.isAvailable()).isTrue();
+            });
+            assertThat(session.capture()).isNotNull();
+        } finally {
+            manager.shutdown();
+        }
+    }
+
+    @Test
     void closesWhileCaptureIsRunningWithoutHanging() throws Exception {
         BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
         try {

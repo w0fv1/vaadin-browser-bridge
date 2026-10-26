@@ -290,6 +290,12 @@ final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab == null) return;
+            if (tabs.size() == 1) {
+                tab.startNavigation("about:blank");
+                tab.navigate("about:blank");
+                publish();
+                return;
+            }
             closeTarget(tab.targetId());
         });
     }

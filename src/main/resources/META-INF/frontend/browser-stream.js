@@ -416,7 +416,7 @@ class BrowserStreamElement extends HTMLElement {
       const close = document.createElement('span')
       close.className = 'tab-close'
       close.textContent = '×'
-      close.style.cssText = 'margin-left:8px;opacity:.6'
+      close.style.cssText = `margin-left:8px;opacity:.6${this.#tabs.length === 1 ? ';display:none' : ''}`
       close.addEventListener('click', event => {
         event.stopPropagation()
         this.#send({type: 'tab.close', tabId: tab.id})
