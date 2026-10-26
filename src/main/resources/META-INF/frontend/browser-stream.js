@@ -97,6 +97,12 @@ const STYLES = `
 }
 .brs-canvas { display: block; max-width: 100%; max-height: 100%; background: var(--brs-stage); outline: none; cursor: default; opacity: 0; transition: opacity .25s ease; }
 .brs-canvas.is-ready { opacity: 1; }
+.brs-overlay {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: 70%; padding: 8px 14px; border-radius: 999px; text-align: center;
+  background: rgba(0, 0, 0, .62); color: #e6e8eb; font-size: 12px; pointer-events: none;
+}
+.brs-overlay[hidden] { display: none; }
 .brs-hud {
   position: absolute; left: 8px; bottom: 8px; right: 8px; padding: 4px 10px;
   border-radius: 999px; background: rgba(0, 0, 0, .6); color: #e6e8eb;
@@ -158,6 +164,9 @@ class BrowserStreamElement extends HTMLElement {
   #syncTimer = null
   #requestedWidth = 0
   #requestedHeight = 0
+  #everDrew = false
+  #failedOpens = 0
+  #deadSession = false
 
   connectedCallback() {
     this.#build()
@@ -194,6 +203,11 @@ class BrowserStreamElement extends HTMLElement {
 
   set sessionId(value) {
     this.#sessionId = value
+    this.#everDrew = false
+    this.#failedOpens = 0
+    this.#deadSession = false
+    this.#canvas?.classList.remove('is-ready')
+    this.#updateOverlay()
     this.#connect()
   }
 
@@ -320,7 +334,10 @@ class BrowserStreamElement extends HTMLElement {
     canvas.addEventListener('contextmenu', event => event.preventDefault())
     this.hud = document.createElement('div')
     this.hud.className = 'brs-hud'
-    stage.append(canvas, this.hud)
+    this.overlay = document.createElement('div')
+    this.overlay.className = 'brs-overlay'
+    this.overlay.textContent = '连接中…'
+    stage.append(canvas, this.hud, this.overlay)
     this.#canvas = canvas
 
     windowEl.append(tabbar, toolbar, this.panel, stage)
@@ -440,8 +457,12 @@ class BrowserStreamElement extends HTMLElement {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
     const socket = new WebSocket(`${scheme}://${location.host}${this.#streamPath}/${id}`)
     socket.binaryType = 'arraybuffer'
+    let opened = false
     socket.onopen = () => {
       if (generation !== this.#socketGeneration) return
+      opened = true
+      this.#failedOpens = 0
+      this.#deadSession = false
       this.#reconnectDelay = 0
       this.#lastMessageAt = Date.now()
       clearTimeout(this.#reconnectTimer)
@@ -450,13 +471,19 @@ class BrowserStreamElement extends HTMLElement {
       this.#requestedHeight = 0
       this.#syncViewport()
       this.#armLiveness(generation)
+      this.#updateOverlay()
       this.#renderHud()
       this.#renderInfo()
     }
     socket.onclose = () => {
       if (generation !== this.#socketGeneration) return
+      if (!opened) {
+        this.#failedOpens += 1
+        if (this.#failedOpens >= 3) this.#deadSession = true
+      }
       this.#setEnabled(false)
-      this.#scheduleReconnect(generation)
+      this.#updateOverlay()
+      if (!this.#deadSession) this.#scheduleReconnect(generation)
       this.#renderHud()
       this.#renderInfo()
     }
@@ -473,6 +500,22 @@ class BrowserStreamElement extends HTMLElement {
     }
     this.#socket = socket
     this.#stats.windowStart = performance.now()
+  }
+
+  #updateOverlay() {
+    if (!this.overlay) return
+    if (this.#everDrew) {
+      this.overlay.hidden = true
+      return
+    }
+    this.overlay.hidden = false
+    if (this.#deadSession) {
+      this.overlay.textContent = '会话已失效，请重新点击「启动浏览器」'
+    } else if (this.#socket?.readyState === WebSocket.OPEN) {
+      this.overlay.textContent = '等待画面…'
+    } else {
+      this.overlay.textContent = '连接中…'
+    }
   }
 
   #setEnabled(enabled) {
@@ -550,6 +593,7 @@ class BrowserStreamElement extends HTMLElement {
     this.#renderMetrics()
     this.#renderHud()
     this.#renderInfo()
+    this.#updateOverlay()
     if (activeChanged && this.#focusAddressOnTabChange) {
       this.#focusAddressOnTabChange = false
       requestAnimationFrame(() => {
@@ -656,6 +700,7 @@ class BrowserStreamElement extends HTMLElement {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'brs-tab is-new'
+    button.addEventListener('animationend', () => button.classList.remove('is-new'), {once: true})
     button.dataset.tabId = tabId
     const favicon = document.createElement('span')
     favicon.className = 'brs-favicon'
@@ -750,6 +795,8 @@ class BrowserStreamElement extends HTMLElement {
         try {
           this.#canvas.getContext('2d').drawImage(bitmap, 0, 0, this.#canvas.width, this.#canvas.height)
           this.#canvas.classList.add('is-ready')
+          this.#everDrew = true
+          this.#updateOverlay()
           this.#stats.renderFrames += 1
         } finally {
           bitmap.close()
