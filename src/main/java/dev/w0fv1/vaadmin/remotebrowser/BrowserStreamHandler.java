@@ -118,6 +118,8 @@ final class BrowserStreamHandler extends AbstractWebSocketHandler {
                 if (state.version() != sentVersion) {
                     send(socket, new TextMessage(mapper.writeValueAsString(state)));
                     sentVersion = state.version();
+                    lastFrame = null;
+                    idleFrames = 0;
                 }
                 if (browser.canCapture()) {
                     byte[] frame = browser.capture();
