@@ -267,6 +267,7 @@ final class BrowserSession {
         execute(() -> {
             BrowserTab tab = tabs.get(tabId);
             if (tab != null) tab.resize(viewportWidth, viewportHeight);
+            publish();
         });
     }
 
