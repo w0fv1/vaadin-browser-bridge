@@ -310,6 +310,32 @@ final class BrowserSession {
         });
     }
 
+    public void historyBack() {
+        stepHistory(-1);
+    }
+
+    public void historyForward() {
+        stepHistory(1);
+    }
+
+    public void reloadActive() {
+        String tabId = activeTabId;
+        execute(() -> {
+            BrowserTab tab = tabs.get(tabId);
+            if (tab != null) tab.reload();
+        });
+    }
+
+    private void stepHistory(int delta) {
+        String tabId = activeTabId;
+        execute(() -> {
+            BrowserTab tab = tabs.get(tabId);
+            if (tab == null) return;
+            tab.stepHistory(delta);
+            publish();
+        });
+    }
+
     public void configure(
             int requestedQuality,
             int requestedIntervalMillis,

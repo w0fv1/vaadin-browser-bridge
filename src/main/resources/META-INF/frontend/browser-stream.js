@@ -1,3 +1,118 @@
+const ICONS = {
+  back: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  forward: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
+  reload: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.6 5.9"/><path d="M20 4v7h-7"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  go: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"/><path d="M12 6l6 6-6 6"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2.2"/><circle cx="9" cy="16" r="2.2"/></svg>',
+}
+
+const STYLES = `
+.brs {
+  --brs-chrome: #dfe3e8;
+  --brs-tab: #c9ced6;
+  --brs-surface: #f6f7f9;
+  --brs-field: #ffffff;
+  --brs-text: #1f2124;
+  --brs-muted: #5b6167;
+  --brs-line: rgba(0, 0, 0, .12);
+  --brs-hover: rgba(0, 0, 0, .07);
+  --brs-stage: #101114;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: var(--brs-text);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  .brs {
+    --brs-chrome: #35363a;
+    --brs-tab: #25262a;
+    --brs-surface: #1f2023;
+    --brs-field: #3c4043;
+    --brs-text: #e8eaed;
+    --brs-muted: #9aa0a6;
+    --brs-line: rgba(255, 255, 255, .14);
+    --brs-hover: rgba(255, 255, 255, .1);
+  }
+}
+.brs-window {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--brs-chrome);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .14), 0 8px 24px rgba(0, 0, 0, .10);
+}
+.brs-tabbar { display: flex; align-items: flex-end; gap: 2px; padding: 8px 8px 0; }
+.brs-tabs { display: flex; align-items: flex-end; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.brs-tabs::-webkit-scrollbar { display: none; }
+.brs-tab {
+  display: flex; align-items: center; gap: 7px;
+  flex: 0 1 220px; min-width: 68px; max-width: 220px; height: 33px;
+  padding: 0 6px 0 10px; border: 0; border-radius: 9px 9px 0 0;
+  background: transparent; color: var(--brs-muted); font: inherit; text-align: left; cursor: pointer;
+}
+.brs-tab:hover { background: var(--brs-hover); }
+.brs-tab.is-active { background: var(--brs-surface); color: var(--brs-text); }
+.brs-favicon { flex: none; width: 13px; height: 13px; border-radius: 4px; background: currentColor; opacity: .38; }
+.brs-tab.is-active .brs-favicon { opacity: .62; }
+.brs-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brs-close {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 14px; line-height: 1; opacity: 0;
+}
+.brs-tab:hover .brs-close, .brs-tab.is-active .brs-close { opacity: .55; }
+.brs-close:hover { background: var(--brs-hover); opacity: 1; }
+.brs-toolbar { display: flex; align-items: center; gap: 2px; padding: 5px 8px 7px; background: var(--brs-surface); border-bottom: 1px solid var(--brs-line); }
+.brs-iconbtn {
+  display: grid; place-items: center; width: 30px; height: 30px; flex: none;
+  border: 0; border-radius: 50%; background: transparent; color: var(--brs-text); cursor: pointer;
+}
+.brs-iconbtn:hover { background: var(--brs-hover); }
+.brs-iconbtn.is-on { background: var(--brs-hover); }
+.brs-iconbtn:disabled { opacity: .4; cursor: default; background: transparent; }
+.brs-tabbar > .brs-iconbtn, .brs-tabbar > .brs-newtab { width: 30px; height: 30px; margin-bottom: 2px; }
+.brs-omnibox {
+  display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0;
+  height: 32px; margin: 0 6px; padding: 0 2px 0 12px;
+  border-radius: 999px; background: var(--brs-field); border: 1px solid var(--brs-line);
+}
+.brs-omnibox:focus-within { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26, 115, 232, .18); }
+.brs-address { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
+.brs-status { padding: 0 10px 6px; color: var(--brs-muted); font-size: 12px; background: var(--brs-surface); }
+.brs-status:empty { display: none; }
+.brs-stage {
+  position: relative; flex: 1 1 auto; height: calc(100vh - 190px); min-height: 420px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--brs-stage);
+}
+.brs-canvas { display: block; max-width: 100%; max-height: 100%; background: var(--brs-stage); outline: none; cursor: default; }
+.brs-hud {
+  position: absolute; left: 8px; bottom: 8px; right: 8px; padding: 4px 10px;
+  border-radius: 999px; background: rgba(0, 0, 0, .6); color: #e6e8eb;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
+.brs-menu {
+  position: absolute; right: 10px; top: 82px; z-index: 6; width: min(380px, calc(100% - 20px));
+  display: grid; gap: 9px; padding: 12px;
+  border-radius: 12px; background: var(--brs-field); color: var(--brs-text);
+  border: 1px solid var(--brs-line); box-shadow: 0 10px 30px rgba(0, 0, 0, .24);
+  font-size: 12px;
+}
+.brs-menu[hidden] { display: none; }
+.brs-menu-title { font-size: 12px; font-weight: 600; color: var(--brs-muted); }
+.brs-row { display: flex; align-items: center; gap: 8px; }
+.brs-row > input[type="range"] { flex: 1; min-width: 0; }
+.brs-toggle { display: flex; align-items: center; gap: 8px; }
+.brs-toggle > select { margin-left: auto; }
+.brs-select { background: var(--brs-field); color: inherit; border: 1px solid var(--brs-line); border-radius: 6px; padding: 2px 6px; font: inherit; }
+.brs-note { color: var(--brs-muted); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.brs-info { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--brs-line); }
+`
+
 class BrowserStreamElement extends HTMLElement {
   #socket = null
   #canvas = null
@@ -66,63 +181,57 @@ class BrowserStreamElement extends HTMLElement {
   #build() {
     if (this.#canvas) return
     const root = document.createElement('div')
-    root.className = 'browser-stream-root'
-    root.style.cssText = 'display:flex;flex-direction:column;gap:6px;font-size:13px'
+    root.className = 'brs'
+    root.append(this.#stylesheet())
 
-    const strip = document.createElement('div')
-    strip.style.cssText = 'display:flex;align-items:center;gap:4px;flex-wrap:wrap'
+    const windowEl = document.createElement('div')
+    windowEl.className = 'brs-window'
+
+    const tabbar = document.createElement('div')
+    tabbar.className = 'brs-tabbar'
     this.tabStrip = document.createElement('div')
-    this.tabStrip.style.cssText = 'display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow-x:auto'
-    this.newTabButton = document.createElement('button')
-    this.newTabButton.type = 'button'
-    this.newTabButton.textContent = '新建标签页'
-    this.newTabButton.title = '新建标签页并聚焦地址栏'
-    this.newTabButton.disabled = true
-    this.newTabButton.style.cssText = 'padding:3px 10px;cursor:pointer'
-    this.newTabButton.addEventListener('click', () => {
+    this.tabStrip.className = 'brs-tabs'
+    this.newTabButton = this.#iconButton('plus', '新建标签页', () => {
       this.#focusAddressOnTabChange = true
       this.#send({type: 'tab.open', url: 'about:blank'})
     })
-    strip.append(this.tabStrip, this.newTabButton)
+    tabbar.append(this.tabStrip, this.newTabButton)
 
-    const addressRow = document.createElement('div')
-    addressRow.style.cssText = 'display:flex;align-items:center;gap:6px'
+    const toolbar = document.createElement('div')
+    toolbar.className = 'brs-toolbar'
+    this.backButton = this.#iconButton('back', '后退', () => this.#send({type: 'history.back'}))
+    this.forwardButton = this.#iconButton('forward', '前进', () => this.#send({type: 'history.forward'}))
+    this.reloadButton = this.#iconButton('reload', '刷新', () => this.#send({type: 'reload'}))
+
+    const omnibox = document.createElement('div')
+    omnibox.className = 'brs-omnibox'
     this.address = document.createElement('input')
+    this.address.className = 'brs-address'
     this.address.type = 'text'
-    this.address.placeholder = '输入网址，例如 example.org'
+    this.address.placeholder = '搜索或输入网址'
     this.address.disabled = true
     this.address.autocomplete = 'off'
     this.address.spellcheck = false
-    this.address.style.cssText = 'flex:1;min-width:0;padding:4px 8px;font-size:13px'
     this.address.addEventListener('keydown', event => {
       if (event.key === 'Enter') {
         event.preventDefault()
         this.#navigate()
       }
     })
-    const openButton = document.createElement('button')
-    openButton.type = 'button'
-    openButton.textContent = '打开'
-    openButton.disabled = true
-    openButton.style.cssText = 'padding:3px 12px;cursor:pointer'
-    openButton.addEventListener('click', () => this.#navigate())
-    this.panelToggle = document.createElement('button')
-    this.panelToggle.type = 'button'
-    this.panelToggle.textContent = '画面参数'
-    this.panelToggle.style.cssText = 'padding:3px 12px;cursor:pointer'
-    this.panelToggle.addEventListener('click', () => {
-      this.panel.hidden = !this.panel.hidden
-      this.panelToggle.textContent = this.panel.hidden ? '画面参数' : '收起参数'
-    })
-    this.openButton = openButton
-    addressRow.append(this.address, openButton, this.panelToggle)
+    this.openButton = this.#iconButton('go', '打开', () => this.#navigate())
+    omnibox.append(this.address, this.openButton)
+    this.panelToggle = this.#iconButton('settings', '画面参数', () => this.#togglePanel())
+    toolbar.append(this.backButton, this.forwardButton, this.reloadButton, omnibox, this.panelToggle)
 
-    this.navigationStatus = document.createElement('span')
-    this.navigationStatus.style.cssText = 'display:block;min-height:18px;color:#666'
+    this.navigationStatus = document.createElement('div')
+    this.navigationStatus.className = 'brs-status'
 
     this.panel = document.createElement('div')
+    this.panel.className = 'brs-menu'
     this.panel.hidden = true
-    this.panel.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:6px 8px;border:1px solid rgba(128,128,128,.35);border-radius:4px'
+    const panelTitle = document.createElement('div')
+    panelTitle.className = 'brs-menu-title'
+    panelTitle.textContent = '画面参数'
     this.qualityInput = this.#slider(20, 90, 5, this.#stream.quality, '质量', value => {
       this.#stream.quality = value
       this.#scheduleQuality()
@@ -132,7 +241,7 @@ class BrowserStreamElement extends HTMLElement {
       this.#scheduleQuality()
     })
     const networkRow = document.createElement('label')
-    networkRow.style.cssText = 'display:flex;align-items:center;gap:6px'
+    networkRow.className = 'brs-toggle'
     this.networkEnabledInput = document.createElement('input')
     this.networkEnabledInput.type = 'checkbox'
     this.networkEnabledInput.checked = this.#stream.networkEnabled
@@ -140,8 +249,9 @@ class BrowserStreamElement extends HTMLElement {
       this.#stream.networkEnabled = this.networkEnabledInput.checked
       this.#scheduleQuality()
     })
-    networkRow.append(this.networkEnabledInput, document.createTextNode('网络模拟'))
+    networkRow.append(this.networkEnabledInput, document.createTextNode('网络模拟'), this.bandwidthInput)
     this.bandwidthInput = document.createElement('select')
+    this.bandwidthInput.className = 'brs-select'
     for (const value of [64, 128, 256, 500, 1024, 2048]) {
       const option = document.createElement('option')
       option.value = String(value * 1024)
@@ -157,17 +267,31 @@ class BrowserStreamElement extends HTMLElement {
       this.#stream.latencyMillis = value
       this.#scheduleQuality()
     })
-    this.metrics = document.createElement('span')
-    this.metrics.style.cssText = 'opacity:.75'
-    this.panel.append(networkRow, this.bandwidthInput, this.qualityInput.row, this.intervalInput.row, this.latencyInput.row, this.metrics)
+    this.metrics = document.createElement('div')
+    this.metrics.className = 'brs-note'
+    this.serverInfo = document.createElement('div')
+    this.serverInfo.className = 'brs-note'
+    this.browserInfo = document.createElement('div')
+    this.browserInfo.className = 'brs-note'
+    this.infoPanel = document.createElement('div')
+    this.infoPanel.className = 'brs-info'
+    this.infoPanel.append(this.serverInfo, this.browserInfo)
+    this.panel.append(
+      panelTitle,
+      networkRow,
+      this.qualityInput.row,
+      this.intervalInput.row,
+      this.latencyInput.row,
+      this.metrics,
+      this.infoPanel)
 
-    const canvasFrame = document.createElement('div')
-    canvasFrame.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:calc(100vh - 210px);min-height:480px;background:#111;overflow:hidden'
+    const stage = document.createElement('div')
+    stage.className = 'brs-stage'
     const canvas = document.createElement('canvas')
+    canvas.className = 'brs-canvas'
     canvas.width = 1280
     canvas.height = 720
     canvas.tabIndex = 0
-    canvas.style.cssText = 'display:block;max-width:100%;max-height:100%;background:#111;outline:none;cursor:default'
     canvas.addEventListener('pointerdown', event => this.#pointerDown(event))
     canvas.addEventListener('pointermove', event => this.#pointerMove(event))
     canvas.addEventListener('pointerup', event => this.#pointerUp(event))
@@ -179,22 +303,39 @@ class BrowserStreamElement extends HTMLElement {
     })
     canvas.addEventListener('contextmenu', event => event.preventDefault())
     this.hud = document.createElement('div')
-    this.hud.style.cssText = 'position:absolute;left:8px;top:8px;right:8px;min-height:20px;padding:3px 6px;background:rgba(0,0,0,.62);color:#fff;font:12px/1.4 monospace;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'
-    canvasFrame.append(canvas, this.hud)
+    this.hud.className = 'brs-hud'
+    stage.append(canvas, this.hud)
     this.#canvas = canvas
 
-    this.infoPanel = document.createElement('div')
-    this.infoPanel.style.cssText = 'display:grid;gap:3px;padding:6px 8px;font:12px/1.45 monospace;color:#555;background:rgba(128,128,128,.08);overflow-wrap:anywhere'
-    this.serverInfo = document.createElement('div')
-    this.browserInfo = document.createElement('div')
-    this.infoPanel.append(this.serverInfo, this.browserInfo)
-
-    root.append(strip, addressRow, this.navigationStatus, this.panel, canvasFrame, this.infoPanel)
+    windowEl.append(tabbar, toolbar, this.navigationStatus, this.panel, stage)
+    root.append(windowEl)
     this.append(root)
     this.#renderTabs()
     this.#renderMetrics()
     this.#renderHud()
     this.#renderInfo()
+  }
+
+  #togglePanel() {
+    this.panel.hidden = !this.panel.hidden
+    this.panelToggle.classList.toggle('is-on', !this.panel.hidden)
+  }
+
+  #iconButton(name, title, handler) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'brs-iconbtn'
+    button.title = title
+    button.setAttribute('aria-label', title)
+    button.innerHTML = ICONS[name]
+    button.addEventListener('click', handler)
+    return button
+  }
+
+  #stylesheet() {
+    const style = document.createElement('style')
+    style.textContent = STYLES
+    return style
   }
 
   #observeViewport() {
@@ -227,7 +368,7 @@ class BrowserStreamElement extends HTMLElement {
 
   #slider(min, max, step, value, label, onChange) {
     const row = document.createElement('label')
-    row.style.cssText = 'display:flex;align-items:center;gap:6px'
+    row.className = 'brs-row'
     const text = document.createElement('span')
     text.textContent = label
     const input = document.createElement('input')
@@ -269,9 +410,7 @@ class BrowserStreamElement extends HTMLElement {
     this.#socket?.close()
     this.#latestFrameId = -1
     this.#chunks.clear()
-    this.address.disabled = true
-    this.openButton.disabled = true
-    this.newTabButton.disabled = true
+    this.#setEnabled(false)
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
     const socket = new WebSocket(`${scheme}://${location.host}${this.#streamPath}/${id}`)
     socket.binaryType = 'arraybuffer'
@@ -280,9 +419,7 @@ class BrowserStreamElement extends HTMLElement {
       this.#reconnectDelay = 0
       this.#lastMessageAt = Date.now()
       clearTimeout(this.#reconnectTimer)
-      this.address.disabled = false
-      this.openButton.disabled = false
-      this.newTabButton.disabled = false
+      this.#setEnabled(true)
       this.#syncViewport()
       this.#armLiveness(generation)
       this.#renderHud()
@@ -290,9 +427,7 @@ class BrowserStreamElement extends HTMLElement {
     }
     socket.onclose = () => {
       if (generation !== this.#socketGeneration) return
-      this.address.disabled = true
-      this.openButton.disabled = true
-      this.newTabButton.disabled = true
+      this.#setEnabled(false)
       this.#scheduleReconnect(generation)
       this.#renderHud()
       this.#renderInfo()
@@ -310,6 +445,19 @@ class BrowserStreamElement extends HTMLElement {
     }
     this.#socket = socket
     this.#stats.windowStart = performance.now()
+  }
+
+  #setEnabled(enabled) {
+    for (const control of [
+      this.address,
+      this.openButton,
+      this.newTabButton,
+      this.backButton,
+      this.forwardButton,
+      this.reloadButton,
+    ]) {
+      if (control) control.disabled = !enabled
+    }
   }
 
   #scheduleReconnect(generation) {
@@ -454,22 +602,22 @@ class BrowserStreamElement extends HTMLElement {
     for (const tab of this.#tabs) {
       const button = document.createElement('button')
       button.type = 'button'
-      button.className = `tab ${tab.id === this.#activeTabId ? 'active' : ''}`
+      button.className = `brs-tab${tab.id === this.#activeTabId ? ' is-active' : ''}`
       button.title = tab.error || tab.url
+      const favicon = document.createElement('span')
+      favicon.className = 'brs-favicon'
       const label = document.createElement('span')
-      label.className = 'tab-title'
+      label.className = 'brs-title'
       label.textContent = tab.loading ? '加载中…' : (tab.title || tab.url || '新标签页')
       const close = document.createElement('span')
-      close.className = 'tab-close'
+      close.className = 'brs-close'
       close.textContent = '×'
-      close.style.cssText = `margin-left:8px;opacity:.6${this.#tabs.length === 1 ? ';display:none' : ''}`
+      if (this.#tabs.length === 1) close.hidden = true
       close.addEventListener('click', event => {
         event.stopPropagation()
         this.#send({type: 'tab.close', tabId: tab.id})
       })
-      button.append(label, close)
-      button.style.cssText = `display:flex;align-items:center;max-width:220px;padding:3px 10px;cursor:pointer;font-size:12px;border:1px solid rgba(128,128,128,.35);border-radius:4px 4px 0 0;background:${tab.id === this.#activeTabId ? '#fff' : 'transparent'};font-weight:${tab.id === this.#activeTabId ? '600' : '400'}`
-      label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+      button.append(favicon, label, close)
       button.addEventListener('click', () => this.#send({type: 'tab.activate', tabId: tab.id}))
       this.tabStrip.append(button)
     }

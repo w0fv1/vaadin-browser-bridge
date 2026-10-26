@@ -61,6 +61,9 @@ final class BrowserStreamHandler extends AbstractWebSocketHandler {
                 case "tab.activate" -> browser.activateTab(input.path("tabId").asString(""));
                 case "tab.close" -> browser.closeTab(input.path("tabId").asString(""));
                 case "tab.navigate" -> browser.navigateActive(input.path("url").asString("about:blank"));
+                case "history.back" -> browser.historyBack();
+                case "history.forward" -> browser.historyForward();
+                case "reload" -> browser.reloadActive();
                 case "viewport.resize" -> browser.resizeViewport(
                         input.path("width").asInt(BrowserSession.DEFAULT_VIEWPORT_WIDTH),
                         input.path("height").asInt(BrowserSession.DEFAULT_VIEWPORT_HEIGHT));

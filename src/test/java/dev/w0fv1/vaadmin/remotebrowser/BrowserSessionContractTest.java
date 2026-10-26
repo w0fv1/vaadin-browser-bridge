@@ -85,6 +85,41 @@ final class BrowserSessionContractTest {
     }
 
     @Test
+    void walksHistoryBackAndForward() throws Exception {
+        BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
+        try (RemoteBrowserSession lease = manager.open(new BrowserProfileId("history"), baseUrl)) {
+            BrowserSession session = lease.session();
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
+                session.capture();
+                assertThat(session.browserInfo().activeUrl()).startsWith(baseUrl);
+            });
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() ->
+                    assertThat(session.state().tabs().getFirst().loading()).isFalse());
+
+            session.navigateActive(baseUrl + "/second");
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
+                session.capture();
+                assertThat(session.browserInfo().activeUrl()).endsWith("/second");
+                assertThat(session.state().tabs().getFirst().loading()).isFalse();
+            });
+
+            session.historyBack();
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
+                session.capture();
+                assertThat(session.browserInfo().activeUrl()).doesNotEndWith("/second");
+            });
+
+            session.historyForward();
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
+                session.capture();
+                assertThat(session.browserInfo().activeUrl()).endsWith("/second");
+            });
+        } finally {
+            manager.shutdown();
+        }
+    }
+
+    @Test
     void closingLastTabResetsItInsteadOfKillingBrowser() throws Exception {
         BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
         try (RemoteBrowserSession lease = manager.open(new BrowserProfileId("last-tab"), baseUrl)) {
@@ -99,7 +134,8 @@ final class BrowserSessionContractTest {
                 assertThat(state.tabs().getFirst().url()).isEqualTo("about:blank");
                 assertThat(session.isAvailable()).isTrue();
             });
-            assertThat(session.capture()).isNotNull();
+            await().atMost(Duration.ofSeconds(60)).untilAsserted(() ->
+                    assertThat(session.capture()).isNotNull());
         } finally {
             manager.shutdown();
         }

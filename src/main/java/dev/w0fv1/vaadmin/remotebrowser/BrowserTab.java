@@ -93,6 +93,20 @@ final class BrowserTab {
         cursorHandler = handler;
     }
 
+    void reload() {
+        session.call("Page.reload", null);
+    }
+
+    void stepHistory(int delta) {
+        JsonNode history = session.call("Page.getNavigationHistory", null);
+        JsonNode entries = history.path("entries");
+        int target = history.path("currentIndex").asInt() + delta;
+        if (target < 0 || target >= entries.size()) return;
+        ObjectNode parameters = mapper.createObjectNode();
+        parameters.put("entryId", entries.get(target).path("id").asInt());
+        session.call("Page.navigateToHistoryEntry", parameters);
+    }
+
     JsonNode evaluate(String expression) {
         ObjectNode parameters = mapper.createObjectNode();
         parameters.put("expression", expression);
