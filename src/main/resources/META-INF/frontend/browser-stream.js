@@ -462,7 +462,6 @@ class BrowserStreamElement extends HTMLElement {
     socket.onopen = () => {
       if (generation !== this.#socketGeneration) return
       opened = true
-      this.#failedOpens = 0
       this.#deadSession = false
       this.#reconnectDelay = 0
       this.#lastMessageAt = Date.now()
@@ -491,6 +490,7 @@ class BrowserStreamElement extends HTMLElement {
     socket.onmessage = event => {
       if (generation !== this.#socketGeneration) return
       gotMessage = true
+      this.#failedOpens = 0
       this.#lastMessageAt = Date.now()
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)
