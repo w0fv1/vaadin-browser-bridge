@@ -41,6 +41,14 @@ final class BrowserViewport {
         resizeHeaded(targetWidth, targetHeight);
     }
 
+    int clientWidth() {
+        return clientWidth;
+    }
+
+    int clientHeight() {
+        return clientHeight;
+    }
+
     double mapX(double x, int viewportWidth) {
         if (viewportWidth <= 0 || clientWidth <= 0) return x;
         return x * clientWidth / viewportWidth;

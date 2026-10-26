@@ -64,6 +64,27 @@ final class BrowserSessionContractTest {
     }
 
     @Test
+    void publishesViewportInCssPixels() throws Exception {
+        BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
+        try (RemoteBrowserSession lease = manager.open(new BrowserProfileId("viewport-pixels"), baseUrl)) {
+            BrowserSession session = lease.session();
+            session.resizeViewport(1000, 600);
+            await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+                assertThat(session.state().viewportWidth()).isEqualTo(1000);
+                assertThat(session.state().viewportHeight()).isEqualTo(600);
+            });
+
+            session.resizeViewport(1600, 900);
+            await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+                assertThat(session.state().viewportWidth()).isEqualTo(1600);
+                assertThat(session.state().viewportHeight()).isEqualTo(900);
+            });
+        } finally {
+            manager.shutdown();
+        }
+    }
+
+    @Test
     void closesWhileCaptureIsRunningWithoutHanging() throws Exception {
         BrowserSessionManager manager = manager(BrowserMode.HEADLESS);
         try {

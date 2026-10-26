@@ -201,6 +201,14 @@ final class BrowserTab {
         connection.call("Target.closeTarget", parameters);
     }
 
+    int viewportWidth() {
+        return viewport.clientWidth();
+    }
+
+    int viewportHeight() {
+        return viewport.clientHeight();
+    }
+
     void resize(int width, int height) {
         viewport.resize(width, height);
     }
