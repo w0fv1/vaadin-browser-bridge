@@ -458,6 +458,7 @@ class BrowserStreamElement extends HTMLElement {
     const socket = new WebSocket(`${scheme}://${location.host}${this.#streamPath}/${id}`)
     socket.binaryType = 'arraybuffer'
     let opened = false
+    let gotMessage = false
     socket.onopen = () => {
       if (generation !== this.#socketGeneration) return
       opened = true
@@ -477,7 +478,7 @@ class BrowserStreamElement extends HTMLElement {
     }
     socket.onclose = () => {
       if (generation !== this.#socketGeneration) return
-      if (!opened) {
+      if (!gotMessage) {
         this.#failedOpens += 1
         if (this.#failedOpens >= 3) this.#deadSession = true
       }
@@ -489,6 +490,7 @@ class BrowserStreamElement extends HTMLElement {
     }
     socket.onmessage = event => {
       if (generation !== this.#socketGeneration) return
+      gotMessage = true
       this.#lastMessageAt = Date.now()
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)

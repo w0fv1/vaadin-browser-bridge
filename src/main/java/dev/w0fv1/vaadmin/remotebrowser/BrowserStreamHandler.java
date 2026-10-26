@@ -35,13 +35,24 @@ final class BrowserStreamHandler extends AbstractWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession socket) {
-        BrowserSession browser = sessions.require(sessionId(socket));
+        BrowserSession browser = resolve(socket);
+        if (browser == null) return;
         Thread.startVirtualThread(() -> stream(socket, browser));
+    }
+
+    private BrowserSession resolve(WebSocketSession socket) {
+        try {
+            return sessions.require(sessionId(socket));
+        } catch (IllegalArgumentException missing) {
+            closeQuietly(socket);
+            return null;
+        }
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession socket, TextMessage message) {
-        BrowserSession browser = sessions.require(sessionId(socket));
+        BrowserSession browser = resolve(socket);
+        if (browser == null) return;
         JsonNode input = mapper.readTree(message.getPayload());
         try {
             switch (input.path("type").asString()) {
