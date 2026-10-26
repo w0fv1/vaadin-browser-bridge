@@ -509,7 +509,9 @@ class BrowserStreamElement extends HTMLElement {
       return
     }
     this.overlay.hidden = false
-    if (this.#deadSession) {
+    if (!this.#sessionId) {
+      this.overlay.textContent = '点「启动浏览器」开始'
+    } else if (this.#deadSession) {
       this.overlay.textContent = '会话已失效，请重新点击「启动浏览器」'
     } else if (this.#socket?.readyState === WebSocket.OPEN) {
       this.overlay.textContent = '等待画面…'
